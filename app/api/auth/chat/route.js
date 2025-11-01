@@ -4,7 +4,7 @@ import {
   HarmBlockThreshold,
 } from '@google/generative-ai';
 
-const MODEL_NAME = 'gemini-1.5-flash';
+const MODEL_NAME = 'gemini-1.5-flash-latest';
 
 export async function POST(req) {
   const { prompt } = await req.json();
