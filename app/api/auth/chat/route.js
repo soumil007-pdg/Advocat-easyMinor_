@@ -5,13 +5,13 @@ import {
 } from '@google/generative-ai';
 
 // This is the corrected model name
-const MODEL_NAME = 'gemini-1.5-flash';
+const MODEL_NAME = 'gemini-2.5-flash';
 
 export async function POST(req) {
   const { prompt } = await req.json();
 
   // 1. Set up the connection to Google AI
-  const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
   // 2. This is the system instruction with your rules
