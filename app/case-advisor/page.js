@@ -60,6 +60,9 @@ export default function CaseAdvisor() {
     city: ''
   });
   const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+  const [result, setResult] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     const validateSession = async () => {
@@ -104,12 +107,31 @@ export default function CaseAdvisor() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setIsLoading(true);
+    setResult('');
+    setError('');
+
     const fullData = { ...formData, state: selectedState };
-    console.log('Case Details for Chatbot:', fullData);
-    // TODO: Send to chatbot API for legal advice generation
-    alert('Case details submitted. Redirecting to chatbot for advice...');
-    // Example: localStorage.setItem('caseData', JSON.stringify(fullData));
-    // router.push('/chatbot'); // If you have a chatbot page
+    
+    try {
+      const res = await fetch('/api/case-advisor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fullData),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setResult(data.text);
+      } else {
+        throw new Error(data.message || 'Failed to get response');
+      }
+    } catch (err) {
+      setError("Sorry, I'm having trouble connecting right now. Please try again later.");
+      console.error('Case Advisor error:', err);
+    }
+    setIsLoading(false);
   };
 
   if (!isLoggedIn) {
@@ -122,29 +144,32 @@ export default function CaseAdvisor() {
     <div className="min-h-screen my-24 pb-20 p-8 bg-cover bg-top-right bg-no-repeat relative" style={{
       backgroundImage: `url(${'/pic2.jpeg'})`
     }}>
-      <div className="max-w-4xl mx-auto text-center rounded-xl p-8 relative z-10">
+      <div className="max-w-4xl mx-auto text-center rounded-xl p-8 relative z-10 
+                      bg-black bg-opacity-50 backdrop-blur-md border border-gray-700 shadow-2xl">
+        
         <h1 className="text-4xl font-extrabold mb-6 text-white">Civil Case Advisor</h1>
         <p className="mb-6 text-lg text-white">Welcome, {userEmail}. Enter details to get <span className='text-blue-200 font-semibold'>educational</span> legal advice via a personalized and dedicated AI-bot</p>
+        
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label className="block text-sm font-medium mb-2 text-white">Case Title</label>
+            <label className="block text-sm font-medium mb-2 text-white text-left">Case Title</label>
             <input type="text" name="caseTitle" value={formData.caseTitle} onChange={handleChange} className={inputClasses} required />
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-2 text-white">Plaintiff Name</label>
+              <label className="block text-sm font-medium mb-2 text-white text-left">Plaintiff Name</label>
               <input type="text" name="plaintiffName" value={formData.plaintiffName} onChange={handleChange} className={inputClasses} required />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2 text-white">Defendant Name</label>
+              <label className="block text-sm font-medium mb-2 text-white text-left">Defendant Name</label>
               <input type="text" name="defendantName" value={formData.defendantName} onChange={handleChange} className={inputClasses} required />
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-2 text-white">Case Type</label>
+              <label className="block text-sm font-medium mb-2 text-white text-left">Case Type</label>
               <select name="caseType" value={formData.caseType} onChange={handleChange} className={`${inputClasses} text-black`} required>
                 <option value="">Select Type</option>
                 <option value="contract">Contract Dispute</option>
@@ -158,7 +183,7 @@ export default function CaseAdvisor() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2 text-white">Date of Cause of Action</label>
+              <label className="block text-sm font-medium mb-2 text-white text-left">Date of Cause of Action</label>
               <input 
                 type="date" 
                 name="causeDate" 
@@ -172,18 +197,18 @@ export default function CaseAdvisor() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2 text-white">Brief Description of Facts</label>
+            <label className="block text-sm font-medium mb-2 text-white text-left">Brief Description of Facts</label>
             <textarea name="description" value={formData.description} onChange={handleChange} className={inputClasses} rows="4" required />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2 text-white">Relief Sought</label>
+            <label className="block text-sm font-medium mb-2 text-white text-left">Relief Sought</label>
             <textarea name="reliefSought" value={formData.reliefSought} onChange={handleChange} className={inputClasses} rows="3" required />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-2 text-white">Jurisdiction - State/UT</label>
+              <label className="block text-sm font-medium mb-2 text-white text-left">Jurisdiction - State/UT</label>
               <select value={selectedState} onChange={handleStateChange} className={`${inputClasses} text-black`} required>
                 <option value="">Select State/UT</option>
                 {indianStates.map((state) => (
@@ -194,30 +219,68 @@ export default function CaseAdvisor() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2 text-white">City</label>
+              <label className="block text-sm font-medium mb-2 text-white text-left">City</label>
               <input type="text" name="city" value={formData.city} onChange={handleChange} className={inputClasses} placeholder="e.g., Mumbai" required />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2 text-white">Estimated Suit Value (INR)</label>
+            <label className="block text-sm font-medium mb-2 text-white text-left">Estimated Suit Value (INR)</label>
             <input type="number" name="suitValue" value={formData.suitValue} onChange={handleChange} className={inputClasses} min="0" />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2 text-white">Key Witnesses</label>
+            <label className="block text-sm font-medium mb-2 text-white text-left">Key Witnesses</label>
             <textarea name="witnesses" value={formData.witnesses} onChange={handleChange} className={inputClasses} rows="2" placeholder="Names and brief roles" />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2 text-white">Evidence Available</label>
+            <label className="block text-sm font-medium mb-2 text-white text-left">Evidence Available</label>
             <textarea name="evidence" value={formData.evidence} onChange={handleChange} className={inputClasses} rows="3" placeholder="List documents, photos, contracts, etc." />
           </div>
 
-          <button type="submit" className="w-full bg-neutral-500 text-white py-3 rounded-lg hover:bg-black hover:text-blue-300 cursor-pointer transition font-semibold">
-            Submit for Educational Advice
+          <button 
+            type="submit" 
+            className="w-full bg-orange-600 text-white py-3 rounded-lg hover:bg-orange-700 cursor-pointer transition font-semibold disabled:opacity-50"
+            disabled={isLoading}
+          >
+            {isLoading ? 'Analyzing...' : 'Submit for Educational Advice'}
           </button>
         </form>
+
+        {/* --- STYLING TWEAKS APPLIED BELOW --- */}
+
+        {isLoading && (
+          <div className="mt-8 p-6 bg-gray-900 bg-opacity-70 backdrop-blur-md border border-gray-600 rounded-lg shadow-lg 
+                          text-white text-base leading-relaxed">
+            <h2 className="text-2xl font-semibold text-center mb-4">
+              Analyzing...
+            </h2>
+            <p className="text-gray-200 text-center">
+              Please wait while I review your case details. This may take a moment.
+            </p>
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-8 p-6 bg-red-900 bg-opacity-80 backdrop-blur-md border border-red-600 text-white rounded-lg shadow-lg 
+                          text-base leading-relaxed">
+            <h2 className="text-2xl font-semibold mb-4">Error</h2>
+            <p>{error}</p>
+          </div>
+        )}
+
+        {result && (
+          <div 
+            className="mt-8 p-6 bg-gray-900 bg-opacity-70 backdrop-blur-md border border-gray-600 rounded-lg shadow-lg text-left 
+                          text-gray-200 text-base leading-relaxed"
+            style={{ whiteSpace: 'pre-wrap' }} 
+          >
+            {result}
+          </div>
+        )}
+        {/* --- END OF STYLING TWEAKS --- */}
+
       </div>
     </div>
   );
