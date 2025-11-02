@@ -4,7 +4,8 @@ import {
   HarmBlockThreshold,
 } from '@google/generative-ai';
 
-const MODEL_NAME = 'gemini-1.0-pro';
+// This is the corrected model name
+const MODEL_NAME = 'gemini-1.5-flash';
 
 export async function POST(req) {
   const { prompt } = await req.json();
@@ -24,6 +25,7 @@ You MUST NOT answer questions related to criminal law (e.g., assault, theft, IPC
 If a user asks about a criminal case, you must politely decline and explain that your scope is limited to general and civil legal education, and that criminal matters are very serious and require a real lawyer.
 
 Always include this disclaimer at the end of your response: "This is for educational purposes only. Always consult a certified lawyer for actual legal advice."`;
+
   // 3. Safety and generation settings
   const generationConfig = {
     temperature: 0.9,
