@@ -3,7 +3,7 @@ import Link from "next/link";
 
 const Navbar = () => {
   return (
-    <div className="flex w-full justify-evenly items-center p-3 bg-amber-700 shadow-lg shadow-orange-950 fixed top-0 left-0 right-0 z-50">
+    <div className="flex w-full justify-evenly items-center p-3 bg-amber-700 shadow-lg shadow-orange-950">
       <Link href={"/"}><div className="title text-3xl font-bold">
         {" "}
         <img

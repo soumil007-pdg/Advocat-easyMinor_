@@ -1,17 +1,18 @@
 'use client';
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'react-hot-toast'; // <-- 1. IMPORT TOAST
 
 export default function Auth() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLogin, setIsLogin] = useState(true);
-  const [error, setError] = useState('');
+  // const [error, setError] = useState(''); // <-- 2. REMOVED ERROR STATE
   const router = useRouter();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    // setError(''); // <-- No longer needed
     const endpoint = isLogin ? '/api/auth/login' : '/api/auth/signup';
     try {
       const res = await fetch(endpoint, {
@@ -28,19 +29,23 @@ export default function Auth() {
             console.log('Session token stored:', data.token);
             router.push('/'); // Redirect to userdashboard
           } else {
-            setError('Login failed: No session token received');
+            // 3. USE TOAST FOR ERRORS
+            toast.error('Login failed: No session token received');
             console.error('No token in response:', data);
           }
         } else {
           setIsLogin(true);
-          setError('Signup successful! Please log in.');
+          // 3. USE TOAST FOR SUCCESS
+          toast.success('Signup successful! Please log in.');
         }
       } else {
-        setError(data.message || 'Authentication failed');
+        // 3. USE TOAST FOR ERRORS
+        toast.error(data.message || 'Authentication failed');
         console.error('API error:', data);
       }
     } catch (err) {
-      setError('Network error, please try again');
+      // 3. USE TOAST FOR ERRORS
+      toast.error('Network error, please try again');
       console.error('Fetch error:', err);
     }
   };
@@ -72,7 +77,9 @@ export default function Auth() {
               required
             />
           </div>
-          {error && <p className="text-red-500 text-sm">{error}</p>}
+          
+          {/* 4. REMOVED THE ERROR <p> TAG */}
+
           <button
             type="submit"
             className="w-full bg-white text-blue-500 p-3 rounded-lg hover:bg-black hover:text-white transition"

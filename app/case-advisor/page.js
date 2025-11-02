@@ -1,6 +1,8 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'react-hot-toast';
+import ReactMarkdown from 'react-markdown'; 
 
 const indianStates = [
   { name: 'Andhra Pradesh', capital: 'Amaravati' },
@@ -36,7 +38,6 @@ const indianStates = [
   { name: 'Dadra and Nagar Haveli and Daman and Diu', capital: 'Daman' },
   { name: 'Delhi', capital: 'New Delhi' },
   { name: 'Jammu and Kashmir', capital: 'Srinagar (Summer), Jammu (Winter)' },
-  { name: 'Ladakh', capital: 'Leh (Summer), Kargil (Winter)' },
   { name: 'Lakshadweep', capital: 'Kavaratti' },
   { name: 'Puducherry', capital: 'Pondicherry' }
 ];
@@ -110,14 +111,12 @@ export default function CaseAdvisor() {
     setIsLoading(true);
     setResult('');
     setError('');
-
-    const fullData = { ...formData, state: selectedState };
     
     try {
       const res = await fetch('/api/case-advisor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(fullData),
+        body: JSON.stringify(formData), 
       });
 
       const data = await res.json();
@@ -128,7 +127,7 @@ export default function CaseAdvisor() {
         throw new Error(data.message || 'Failed to get response');
       }
     } catch (err) {
-      setError("Sorry, I'm having trouble connecting right now. Please try again later.");
+      toast.error("Sorry, I'm having trouble connecting right now. Please try again later.");
       console.error('Case Advisor error:', err);
     }
     setIsLoading(false);
@@ -151,6 +150,7 @@ export default function CaseAdvisor() {
         <p className="mb-6 text-lg text-white">Welcome, {userEmail}. Enter details to get <span className='text-blue-200 font-semibold'>educational</span> legal advice via a personalized and dedicated AI-bot</p>
         
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* ... (all your form inputs) ... */}
           <div>
             <label className="block text-sm font-medium mb-2 text-white text-left">Case Title</label>
             <input type="text" name="caseTitle" value={formData.caseTitle} onChange={handleChange} className={inputClasses} required />
@@ -239,6 +239,7 @@ export default function CaseAdvisor() {
             <textarea name="evidence" value={formData.evidence} onChange={handleChange} className={inputClasses} rows="3" placeholder="List documents, photos, contracts, etc." />
           </div>
 
+
           <button 
             type="submit" 
             className="w-full bg-orange-600 text-white py-3 rounded-lg hover:bg-orange-700 cursor-pointer transition font-semibold disabled:opacity-50"
@@ -247,8 +248,6 @@ export default function CaseAdvisor() {
             {isLoading ? 'Analyzing...' : 'Submit for Educational Advice'}
           </button>
         </form>
-
-        {/* --- STYLING TWEAKS APPLIED BELOW --- */}
 
         {isLoading && (
           <div className="mt-8 p-6 bg-gray-900 bg-opacity-70 backdrop-blur-md border border-gray-600 rounded-lg shadow-lg 
@@ -262,24 +261,20 @@ export default function CaseAdvisor() {
           </div>
         )}
 
-        {error && (
-          <div className="mt-8 p-6 bg-red-900 bg-opacity-80 backdrop-blur-md border border-red-600 text-white rounded-lg shadow-lg 
-                          text-base leading-relaxed">
-            <h2 className="text-2xl font-semibold mb-4">Error</h2>
-            <p>{error}</p>
-          </div>
-        )}
-
         {result && (
           <div 
             className="mt-8 p-6 bg-gray-900 bg-opacity-70 backdrop-blur-md border border-gray-600 rounded-lg shadow-lg text-left 
                           text-gray-200 text-base leading-relaxed"
-            style={{ whiteSpace: 'pre-wrap' }} 
           >
-            {result}
+            {/* --- THIS IS THE FIX --- */}
+            <div className="prose prose-invert max-w-none">
+              <ReactMarkdown>
+                {result}
+              </ReactMarkdown>
+            </div>
+            {/* --- END OF FIX --- */}
           </div>
         )}
-        {/* --- END OF STYLING TWEAKS --- */}
 
       </div>
     </div>

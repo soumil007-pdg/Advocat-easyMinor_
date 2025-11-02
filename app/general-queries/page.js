@@ -1,6 +1,7 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import ReactMarkdown from 'react-markdown'; 
 
 export default function GeneralQueries() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -8,8 +9,17 @@ export default function GeneralQueries() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  
+  const messagesEndRef = useRef(null);
 
-  // 1. Check if user is logged in (like on your other pages)
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
   useEffect(() => {
     const validateSession = async () => {
       const token = localStorage.getItem('sessionToken');
@@ -38,7 +48,6 @@ export default function GeneralQueries() {
     validateSession();
   }, [router]);
 
-  // 2. Handle sending the message to your new API
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!input.trim()) return;
@@ -49,7 +58,6 @@ export default function GeneralQueries() {
     setIsLoading(true);
 
     try {
-      // Send the user's prompt to your new backend
       const res = await fetch('/api/auth/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -75,7 +83,6 @@ export default function GeneralQueries() {
     setIsLoading(false);
   };
 
-  // 3. Render the chat UI
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
@@ -86,7 +93,7 @@ export default function GeneralQueries() {
 
   return (
     <div
-      className="h-full flex flex-col justify-between p-4 bg-cover bg-center" // <-- THIS IS THE FIX (line 99)
+      className="h-full flex flex-col justify-between p-4 bg-cover bg-center"
       style={{ backgroundImage: `url(${'/pic3.jpeg'})` }}
     >
       <div className="flex-1 overflow-y-auto bg-black bg-opacity-50 p-6 rounded-lg backdrop-blur-sm">
@@ -101,16 +108,26 @@ export default function GeneralQueries() {
                 msg.role === 'user' ? 'justify-end' : 'justify-start'
               }`}
             >
-              <div
-                className={`max-w-xl p-3 rounded-lg ${
-                  msg.role === 'user'
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-200 text-black'
-                }`}
-                style={{ whiteSpace: 'pre-wrap' }} // This preserves formatting
-              >
-                {msg.text}
-              </div>
+              {msg.role === 'user' ? (
+                <div
+                  className="max-w-xl p-3 rounded-lg bg-blue-500 text-white"
+                  style={{ whiteSpace: 'pre-wrap' }}
+                >
+                  {msg.text}
+                </div>
+              ) : (
+                <div
+                  className="max-w-xl p-3 rounded-lg bg-gray-200 text-black"
+                >
+                  {/* --- THIS IS THE FIX --- */}
+                  <div className="prose prose-sm max-w-none">
+                    <ReactMarkdown>
+                      {msg.text}
+                    </ReactMarkdown>
+                  </div>
+                  {/* --- END OF FIX --- */}
+                </div>
+              )}
             </div>
           ))}
           {isLoading && (
@@ -120,6 +137,7 @@ export default function GeneralQueries() {
               </div>
             </div>
           )}
+          <div ref={messagesEndRef} />
         </div>
       </div>
 
