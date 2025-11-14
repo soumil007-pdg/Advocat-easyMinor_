@@ -40,7 +40,7 @@ Structure your response with these clear headings:
 **ALWAYS** end your entire response with this exact disclaimer:
 "This is for educational purposes only. This is not legal advice. Always consult a certified lawyer for actual legal advice regarding your specific situation."`;
 
-  // 4. Safety and generation settings (same as your chat)
+// 4. Safety and generation settings (same as your chat)
   const generationConfig = {
     temperature: 0.9,
     topK: 1,

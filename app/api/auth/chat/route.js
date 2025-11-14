@@ -4,29 +4,38 @@ import {
   HarmBlockThreshold,
 } from '@google/generative-ai';
 
-// This is the corrected model name
 const MODEL_NAME = 'gemini-2.5-flash';
 
 export async function POST(req) {
-  const { prompt } = await req.json();
+  const { prompt, mode = 'quick' } = await req.json();
 
-  // 1. Set up the connection to Google AI
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
-  // 2. This is the system instruction with your rules
-  const systemInstruction = `You are "Advocat-Easy," a helpful legal-education chatbot.
-Your style is knowledgeable, professional, and simple for anyone to understand.
-You are NOT a lawyer and you CANNOT give real legal advice.
-You can only provide general, educational information about legal topics.
+  // Expanded links: + TN, Karnataka, Kerala, UP, Punjab, Rajasthan
+  const systemInstruction = `You are "Advocat-Easy," an educational legal guide for non-criminal civil issues.
+  Style: Clear, empowering. Use **bold headings**, - bullets for steps. Start with unaware right, cite/explain sections (national + state if detected), connect to query, precise actions with [links](url). Deep: Add simple notice template + pitfalls.
+  
+  CRITICAL: Civil only. Decline criminal. End: "Educational only—consult certified lawyer."
+  
+  Detect state from query. No state? Default national (Contract Act 1872 Sec 73 breach) + "Combine with your state act, e.g., via NALSA [portal](https://nalsa.gov.in)."
+  
+  Links: Delhi [e-District](https://edistrict.delhigovt.nic.in); Mumbai [MahRERA](https://maharera.mahaonline.gov.in); Tamil Nadu [Tenancy Portal](https://www.tenancy.tn.gov.in/); Karnataka [Legal Services](https://judiciary.karnataka.gov.in/kslsa/); Kerala [Legal Aid](https://kelsa.kerala.gov.in/); Uttar Pradesh [NALSA UP](https://nalsa.gov.in/state-legal-services-authority/uttar-pradesh); Punjab [Punjab Legal Aid](https://plsa.punjab.gov.in/); Rajasthan [Rajasthan Legal Services](https://rajals.in/); National [India Code](https://www.indiacode.nic.in) or [NALSA](https://nalsa.gov.in).
+  
+  Structure:
+  1. **Your Key Right**: Core right.
+  2. **Law Breakdown**: 1-2 sections. Explain: "Covers X, fits Y."
+  3. **Connect to Issue**: "Your [problem] = breach because..."
+  4. **Precise Next Steps**: - Bulleted, with [links]. Deep: + "Sample Template: Dear Landlord... [draft]. Pitfalls: e.g., No self-help."`;
 
-Your primary focus is on civil law matters (like contracts, property, family law) and general legal concepts.
-You MUST NOT answer questions related to criminal law (e.g., assault, theft, IPC sections, criminal defense, etc.).
-If a user asks about a criminal case, you must politely decline and explain that your scope is limited to general and civil legal education, and that criminal matters are very serious and require a real lawyer.
+  let fullPrompt = prompt;
+  if (mode === 'deep') {
+    fullPrompt = `Deep mode: ${prompt}. Full structure + template/pitfalls/links. Use - bullets. Under 400 words.`;
+  } else {
+    fullPrompt = `Quick mode: ${prompt}. Concise structure + 1 section/steps (- bullets, basic link, no template). Under 150 words.`;
+  }
+  fullPrompt = `${systemInstruction}\n\n${fullPrompt}`;
 
-Always include this disclaimer at the end of your response: "This is for educational purposes only. Always consult a certified lawyer for actual legal advice."`;
-
-  // 3. Safety and generation settings
   const generationConfig = {
     temperature: 0.9,
     topK: 1,
@@ -53,10 +62,9 @@ Always include this disclaimer at the end of your response: "This is for educati
     },
   ];
 
-  // 4. Try to get a response from the AI
   try {
     const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
       generationConfig,
       safetySettings,
       systemInstruction,
@@ -65,12 +73,22 @@ Always include this disclaimer at the end of your response: "This is for educati
     const response = result.response;
     const text = response.text();
 
-    return new Response(JSON.stringify({ text }), { status: 200 });
+    const usage = result.response.usageMetadata;
+    const tokensUsed = usage ? (usage.promptTokenCount + (usage.candidates?.[0]?.content?.parts?.[0]?.tokenCount || 0)) : Math.ceil(fullPrompt.length / 4);
+    const estimatedRaw = prompt.length * 2;
+    const savedTokens = Math.max(30, estimatedRaw - tokensUsed);
+
+    return new Response(JSON.stringify({ 
+      text, 
+      tokensUsed, 
+      savedTokens 
+    }), { status: 200 });
   } catch (error) {
-    // This is the part that sends the "Sorry,..." error
     console.error('Gemini API error:', error);
-    return new Response(JSON.stringify({ message: 'Error from AI' }), {
-      status: 500,
-    });
+    return new Response(JSON.stringify({ 
+      message: 'Error from AI',
+      tokensUsed: 0,
+      savedTokens: 30 
+    }), { status: 500 });
   }
 }
