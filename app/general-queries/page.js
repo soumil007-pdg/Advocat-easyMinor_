@@ -11,16 +11,29 @@ const MarkdownLink = ({ children, href }) => (
   </a>
 );
 
+// --- HELPER FUNCTION: Get a short title for the case list ---
+const getCaseTitle = (messages) => {
+  if (messages.length === 0) {
+    return "New Case"; // Default for an empty case
+  }
+  const firstUserMessage = messages.find(m => m.role === 'user');
+  return firstUserMessage ? firstUserMessage.text.substring(0, 30) + '...' : "Case";
+};
+
 export default function GeneralQueries() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  
+  // --- NEW STATE MANAGEMENT ---
+  const [caseFiles, setCaseFiles] = useState({});
+  const [activeCaseId, setActiveCaseId] = useState(null);
   const [messages, setMessages] = useState([]);
+  // --- END NEW STATE ---
+
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [mode, setMode] = useState('quick');
-  const [savedTokens, setSavedTokens] = useState(0);
+  const [savedTokens, setSavedTokens] = useState(0); // This now shows tokens for the *active case*
   const [animateCounter, setAnimateCounter] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
-  const [sessions, setSessions] = useState([]);
   const router = useRouter();
   
   const messagesEndRef = useRef(null);
@@ -33,24 +46,68 @@ export default function GeneralQueries() {
     scrollToBottom();
   }, [messages]);
 
-  useEffect(() => {
-    const stored = localStorage.getItem('savedTokens');
-    if (stored) {
-      setSavedTokens(parseInt(stored));
-    }
-    const storedSessions = localStorage.getItem('chatSessions');
-    if (storedSessions) {
-      setSessions(JSON.parse(storedSessions));
-    }
-  }, []);
+  // --- REMOVED old savedTokens useEffects ---
 
+  // --- NEW: Load cases from localStorage on startup ---
   useEffect(() => {
-    localStorage.setItem('savedTokens', savedTokens.toString());
-    localStorage.setItem('chatSessions', JSON.stringify(sessions));
-  }, [savedTokens, sessions]);
+    const storedCases = JSON.parse(localStorage.getItem('advocat_caseFiles')) || {};
+    setCaseFiles(storedCases);
 
+    const lastActiveId = localStorage.getItem('advocat_lastActiveCase');
+
+    if (lastActiveId && storedCases[lastActiveId]) {
+      setActiveCaseId(lastActiveId);
+    } else if (Object.keys(storedCases).length > 0) {
+      setActiveCaseId(Object.keys(storedCases)[0]);
+    } else {
+      // No cases exist, create a fresh one
+      handleCreateNewCase(storedCases); // Pass empty object
+    }
+  }, []); // Runs once on mount
+
+  // --- NEW: Sync messages and token counter when activeCaseId changes ---
+  useEffect(() => {
+    if (activeCaseId && caseFiles[activeCaseId]) {
+      const activeCase = caseFiles[activeCaseId];
+      setMessages(activeCase.messages);
+      setSavedTokens(activeCase.tokensSaved);
+      
+      // Save this as the last active case
+      localStorage.setItem('advocat_lastActiveCase', activeCaseId);
+    } else {
+      setMessages([]);
+      setSavedTokens(0);
+    }
+    scrollToBottom();
+  }, [activeCaseId, caseFiles]);
+
+  // --- NEW: Helper function to create a new case ---
+  const handleCreateNewCase = (currentCases = caseFiles) => {
+    const newCaseId = `case-${Date.now()}`;
+    const newCase = {
+      title: `Case - ${new Date().toLocaleDateString()}`, // We'll update title later
+      messages: [],
+      tokensSaved: 0
+    };
+
+    const updatedCaseFiles = { ...currentCases, [newCaseId]: newCase };
+    
+    setCaseFiles(updatedCaseFiles);
+    setActiveCaseId(newCaseId); // This will trigger the useEffect above
+    
+    localStorage.setItem('advocat_caseFiles', JSON.stringify(updatedCaseFiles));
+    localStorage.setItem('advocat_lastActiveCase', newCaseId);
+  };
+
+  // --- NEW: Helper to select a case ---
+  const handleSelectCase = (caseId) => {
+    setActiveCaseId(caseId);
+  };
+
+  // --- Session validation (unchanged) ---
   useEffect(() => {
     const validateSession = async () => {
+      // ... (your existing validation code is perfect)
       const token = localStorage.getItem('sessionToken');
       if (!token) {
         router.push('/auth');
@@ -77,82 +134,99 @@ export default function GeneralQueries() {
     validateSession();
   }, [router]);
 
-  // Auto-save after AI response
-  const autoSaveSession = () => {
-    if (messages.length > 1) { // Has user + AI
-      const session = {
-        id: Date.now(),
-        title: messages[0]?.text?.substring(0, 50) + '...',
-        messages: [...messages],
-        timestamp: new Date().toLocaleString()
-      };
-      setSessions(prev => {
-        const updated = [session, ...prev.filter(s => s.id !== session.id).slice(0, 9)];
-        return updated;
-      });
-    }
-  };
-
-  // Load session
-  const loadSession = (session) => {
-    setMessages(session.messages);
-    setShowHistory(false);
-    toast.success(`Loaded: ${session.title}`, { duration: 2000 });
-  };
-
-  // Clear current chat
-  const clearChat = () => {
-    setMessages([]);
-    setInput('');
-    toast.info('Chat cleared. Start fresh!', { duration: 2000 });
-  };
-
+  // --- UPDATED handleSubmit ---
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim() || !activeCaseId) return;
 
     const userMessage = { role: 'user', text: input };
-    setMessages((prev) => [...prev, userMessage]);
+    
+    // Optimistically update UI
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
     setInput('');
     setIsLoading(true);
 
     try {
+      // --- UPDATED FETCH: Send the 'messages' history array ---
       const res = await fetch('/api/auth/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: input, mode }),
+        body: JSON.stringify({ 
+          prompt: input, // Send new prompt
+          mode: mode,
+          history: messages // <-- SEND THE CONTEXT!
+        }),
       });
 
       const data = await res.json();
       console.log('API Response:', data);
 
       if (res.ok) {
+        // --- Token calculation (unchanged) ---
+        const ourAppCost = data.tokensUsed || 0;
+        const inputLength = input.length;
+        const VAGUE_THRESHOLD = 50;
+        const CONCISE_THRESHOLD = 200;
+        const maxMultiplier = (mode === 'deep' ? 3.0 : 1.5);
+        const minMultiplier = (mode === 'deep' ? 1.2 : 0.7); 
+        let clarityFactor = (inputLength - VAGUE_THRESHOLD) / (CONCISE_THRESHOLD - VAGUE_THRESHOLD);
+        clarityFactor = Math.max(0, Math.min(1, clarityFactor));
+        const finalMultiplier = maxMultiplier - (clarityFactor * (maxMultiplier - minMultiplier));
+        const estimatedStandardCost = ourAppCost * finalMultiplier;
+        const actualSaved = Math.round(Math.max(0, estimatedStandardCost - ourAppCost));
+        // --- End token calculation ---
+
         const aiMessage = { 
           role: 'model', 
           text: data.text,
-          used: data.tokensUsed || 0,
-          saved: data.savedTokens || 0
+          used: ourAppCost,
+          saved: actualSaved
         };
-        setMessages((prev) => [...prev, aiMessage]);
-        const actualSaved = data.savedTokens > 0 ? data.savedTokens : Math.max(30, Math.ceil(input.length * 2) - (data.tokensUsed || 0));
+        
+        // --- NEW: Save message and tokens to the active case file ---
+        const finalMessages = [...newMessages, aiMessage];
+        
+        // Update title only if it's the first user message
+        const newTitle = messages.length === 0 
+          ? getCaseTitle(finalMessages) 
+          : caseFiles[activeCaseId].title;
+
+        // Get current total saved for this case
+        const currentCaseSaved = caseFiles[activeCaseId].tokensSaved || 0;
+        const newTotalSaved = currentCaseSaved + actualSaved;
+
+        const updatedCase = {
+          ...caseFiles[activeCaseId],
+          title: newTitle,
+          messages: finalMessages,
+          tokensSaved: newTotalSaved
+        };
+
+        const updatedCaseFiles = {
+          ...caseFiles,
+          [activeCaseId]: updatedCase
+        };
+
+        // --- Save everything to state and localStorage ---
+        setCaseFiles(updatedCaseFiles); // This triggers the sync useEffect
+        localStorage.setItem('advocat_caseFiles', JSON.stringify(updatedCaseFiles));
+        
+        // Update header counter
+        setSavedTokens(newTotalSaved);
+
+        // --- Toast (unchanged, but now uses 'actualSaved') ---
         if (actualSaved > 0) {
-          setSavedTokens(prev => prev + actualSaved);
           setAnimateCounter(true);
           setTimeout(() => setAnimateCounter(false), 1500);
           toast.success(
             <div className="flex items-center gap-2">
-              <span className="text-orange-500 font-bold">🧡 Coupon Saved!</span>
-              <span>💰 {actualSaved} tokens banked vs. GPT! 🎊</span>
-            </div>, 
-            { 
-              duration: 5000, 
-              style: { background: '#fed7aa', color: '#92400e' },
-              icon: '🎉',
-              position: 'top-center'
-            }
+              <span className="text-orange-500 font-bold">🧡 Tokens Saved!</span>
+              <span>💰 {actualSaved} tokens banked vs. standard chat! 🎊</span>
+            </div>,
+            { duration: 5000, style: { background: '#fed7aa', color: '#92400e' }, icon: '🎉', position: 'top-center' }
           );
         }
-        autoSaveSession(); // Auto-save here
       } else {
         throw new Error(data.message || 'Failed to get response');
       }
@@ -161,11 +235,13 @@ export default function GeneralQueries() {
         role: 'model',
         text: "Sorry, I'm having trouble connecting right now.",
         used: 0,
-        saved: 30
+        saved: 0
       };
-      setMessages((prev) => [...prev, errorMessage]);
+      // Revert optimistic UI update on error
+      setMessages(messages);
+      // We could add the error message to the UI, but let's keep it simple
+      // setMessages(prev => [...prev, errorMessage]); 
       console.error('Chat error:', err);
-      autoSaveSession(); // Save even on error for history
     }
     setIsLoading(false);
   };
@@ -178,60 +254,61 @@ export default function GeneralQueries() {
     );
   }
 
+  // --- NEW LAYOUT: Sidebar + Chat Area ---
   return (
-    <div className="h-screen flex bg-gray-50 relative">
-      {/* New: History Sidebar - Slimmer, slide-in */}
-      {showHistory && (
-        <div className="fixed inset-y-0 left-0 w-64 bg-white border-r border-gray-200 shadow-lg transform -translate-x-full transition-transform duration-300 ease-in-out z-50" style={{ transform: showHistory ? 'translateX(0)' : '-translateX(100%)' }}>
-          <div className="p-4">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-bold">Chat History</h2>
-              <button onClick={() => setShowHistory(false)} className="text-gray-500 hover:text-gray-700 text-xl">✕</button>
-            </div>
-            <button 
-              onClick={clearChat} 
-              className="w-full bg-gray-500 text-white py-2 px-4 rounded mb-4 hover:bg-gray-600"
-            >
-              Clear Chat
-            </button>
-            <ul className="space-y-2 max-h-96 overflow-y-auto">
-              {sessions.map((session) => (
-                <li key={session.id} className="p-3 bg-gray-50 rounded cursor-pointer hover:bg-gray-100 text-sm" onClick={() => loadSession(session)}>
-                  <div className="font-medium">{session.title}</div>
-                  <div className="text-xs text-gray-500">{session.timestamp}</div>
-                </li>
-              ))}
-            </ul>
-            <p className="text-xs text-gray-400 mt-4">Local-only for privacy. Auto-saves chats.</p>
+    <div className="h-screen flex bg-gray-100">
+      
+      {/* --- Sidebar --- */}
+      <div className="w-64 bg-white shadow-md flex flex-col">
+        <div className="p-4 border-b">
+          <button
+            onClick={() => handleCreateNewCase()}
+            className="w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 transition font-semibold"
+          >
+            Open a New Case
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide p-4">My Case Files</h2>
+          <div className="space-y-2 px-2">
+            {/* Sort cases to show newest first */}
+            {Object.entries(caseFiles).sort((a, b) => b[0].localeCompare(a[0])).map(([caseId, caseData]) => (
+              <button
+                key={caseId}
+                onClick={() => handleSelectCase(caseId)}
+                className={`w-full text-left p-3 rounded-md transition ${
+                  activeCaseId === caseId
+                    ? 'bg-blue-100 text-blue-800'
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <p className="font-medium text-sm truncate">{caseData.title}</p>
+                <p className="text-xs text-orange-600">
+                  {caseData.tokensSaved} tokens saved 🧡
+                </p>
+              </button>
+            ))}
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Overlay for sidebar close on outside click */}
-      {showHistory && <div className="fixed inset-0 bg-black bg-opacity-50 z-40" onClick={() => setShowHistory(false)} />}
-
-      {/* Main Chat */}
-      <div className="flex-1 flex flex-col">
-        <header className="bg-white shadow-sm p-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-black">General Queries Chat</h1>
-          <div className="flex items-center gap-4">
-            <div className={`bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-sm font-bold transition-all ${animateCounter ? 'animate-bounce scale-110' : ''}`}>
-              Tokens Saved: {savedTokens} 🧡
-            </div>
-            <button 
-              onClick={() => setShowHistory(!showHistory)} 
-              className="text-blue-600 hover:text-blue-800 font-medium"
-            >
-              History
-            </button>
+      {/* --- Main Chat Area --- */}
+      <div className="flex-1 flex flex-col h-screen">
+        <header className="bg-white shadow-sm p-4 flex justify-between items-center border-b">
+          <h1 className="text-2xl font-bold text-black">
+            {caseFiles[activeCaseId]?.title || 'General Queries Chat'}
+          </h1>
+          <div className={`bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-sm font-bold transition-all ${animateCounter ? 'animate-bounce scale-110' : ''}`}>
+            Case Tokens Saved: {savedTokens} 🧡
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-4 relative" style={{ backgroundImage: `url(${'/pic3.jpeg'})`, backgroundSize: 'cover' }}>
-          <div className="absolute inset-0 bg-black bg-opacity-20" /> {/* Overlay for readability */}
-          <div className="relative z-10 space-y-4 max-w-4xl mx-auto">
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="space-y-4 max-w-4xl mx-auto">
             {messages.length === 0 && (
-              <p className="text-center text-white italic bg-black bg-opacity-50 p-4 rounded">Drop your query below—pick a mode! (Add state like 'Karnataka' for local links; no state = national basics.)</p>
+              <p className="text-center text-gray-600 italic bg-gray-200 p-4 rounded">
+                This is a new case file. Drop your query below—pick a mode!
+              </p>
             )}
             {messages.map((msg, index) => (
               <div
@@ -245,12 +322,10 @@ export default function GeneralQueries() {
                     {msg.text}
                   </div>
                 ) : (
-                  <div className="max-w-xl p-3 rounded-lg bg-white bg-opacity-95 text-black shadow">
-                    <div className="prose prose-sm max-w-none">
+                  <div className="max-w-xl p-3 rounded-lg bg-white text-black shadow">
+                    <div className="prose prose-sm max-w-none whitespace-pre-wrap overflow-wrap-break-word">
                       <ReactMarkdown 
-                        components={{
-                          a: MarkdownLink
-                        }}
+                        components={{ a: MarkdownLink }}
                       >
                         {msg.text}
                       </ReactMarkdown>
@@ -275,7 +350,7 @@ export default function GeneralQueries() {
 
         <form
           onSubmit={handleSubmit}
-          className="mt-4 p-4 bg-white shadow-sm"
+          className="mt-4 p-4 bg-white shadow-sm border-t"
         >
           <div className="flex gap-2 w-full mb-2">
             <button
@@ -309,20 +384,21 @@ export default function GeneralQueries() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask a general legal question... (e.g., add 'Karnataka' for local links)"
-              className="flex-1 p-3 border rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500" // Fixed: text-black for visibility
-              disabled={isLoading}
+              placeholder="Ask a follow-up or new question in this case..."
+              className="flex-1 p-3 border rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={isLoading || !activeCaseId}
             />
             <button
               type="submit"
               className="bg-blue-500 text-white py-3 px-6 rounded-lg hover:bg-blue-600 transition font-semibold disabled:opacity-50"
-              disabled={isLoading || !input.trim()}
+              disabled={isLoading || !input.trim() || !activeCaseId}
             >
               Send
             </button>
           </div>
         </form>
       </div>
+
     </div>
   );
 }
