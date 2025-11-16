@@ -1,3 +1,5 @@
+//backend page for general query chat
+//backend page for general query chat
 import {
   GoogleGenerativeAI,
   HarmCategory,
@@ -7,35 +9,36 @@ import {
 const MODEL_NAME = 'gemini-2.5-flash';
 
 export async function POST(req) {
-  const { prompt, mode = 'quick' } = await req.json();
+  const { prompt, mode = 'quick', history = [] } = await req.json();
 
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
-  // Expanded links: + TN, Karnataka, Kerala, UP, Punjab, Rajasthan
-  const systemInstruction = `You are "Advocat-Easy," an educational legal guide for non-criminal civil issues.
-  Style: Clear, empowering. Use **bold headings**, - bullets for steps. Start with unaware right, cite/explain sections (national + state if detected), connect to query, precise actions with [links](url). Deep: Add simple notice template + pitfalls.
-  
-  CRITICAL: Civil only. Decline criminal. End: "Educational only—consult certified lawyer."
-  
-  Detect state from query. No state? Default national (Contract Act 1872 Sec 73 breach) + "Combine with your state act, e.g., via NALSA [portal](https://nalsa.gov.in)."
-  
-  Links: Delhi [e-District](https://edistrict.delhigovt.nic.in); Mumbai [MahRERA](https://maharera.mahaonline.gov.in); Tamil Nadu [Tenancy Portal](https://www.tenancy.tn.gov.in/); Karnataka [Legal Services](https://judiciary.karnataka.gov.in/kslsa/); Kerala [Legal Aid](https://kelsa.kerala.gov.in/); Uttar Pradesh [NALSA UP](https://nalsa.gov.in/state-legal-services-authority/uttar-pradesh); Punjab [Punjab Legal Aid](https://plsa.punjab.gov.in/); Rajasthan [Rajasthan Legal Services](https://rajals.in/); National [India Code](https://www.indiacode.nic.in) or [NALSA](https://nalsa.gov.in).
-  
-  Structure:
-  1. **Your Key Right**: Core right.
-  2. **Law Breakdown**: 1-2 sections. Explain: "Covers X, fits Y."
-  3. **Connect to Issue**: "Your [problem] = breach because..."
-  4. **Precise Next Steps**: - Bulleted, with [links]. Deep: + "Sample Template: Dear Landlord... [draft]. Pitfalls: e.g., No self-help."`;
+  // --- *** THIS IS THE FINAL CORRECTED SYSTEM INSTRUCTION *** ---
+  // This is a simplified, "flattened" string to prevent the 400 Bad Request error.
+  const systemInstruction = `You are "Advocat-Easy," an educational legal guide for non-criminal civil issues. Style: Clear, empowering. Use **bold headings** and - bullets for steps. CRITICAL: Civil issues ONLY. Decline all criminal law queries. Always end with "Educational only—consult certified lawyer." PROCESS: 1. Identify right. 2. Cite 1-2 law sections. 3. Connect law to issue. 4. Give bulleted next steps. LINKS: Use when relevant: National (NALSA [https://nalsa.gov.in]), Delhi (e-District [https://edistrict.delhigovt.nic.in]), Mumbai (MahRERA [https://maharera.mahaonline.gov.in]). MODES: 'Quick mode' is concise (under 150 words). 'Deep mode' is detailed with templates/pitfalls (under 400 words).`;
+  // --- END OF CORRECTION ---
 
-  let fullPrompt = prompt;
+  // We apply the systemInstruction when we *get* the model
+  const model = genAI.getGenerativeModel({
+    model: MODEL_NAME,
+    systemInstruction: systemInstruction, // <-- Correctly placed here
+  });
+
+  // --- 1. FORMAT THE HISTORY FOR 'startChat' ---
+  const chatHistory = history.map(msg => ({
+    role: msg.role,
+    parts: [{ text: msg.text }],
+  }));
+
+  // --- 2. FORMAT THE NEW PROMPT ---
+  let userPrompt = '';
   if (mode === 'deep') {
-    fullPrompt = `Deep mode: ${prompt}. Full structure + template/pitfalls/links. Use - bullets. Under 400 words.`;
+    userPrompt = `Deep mode: ${prompt}. Full structure + template/pitfalls/links. Use - bullets. Under 400 words.`;
   } else {
-    fullPrompt = `Quick mode: ${prompt}. Concise structure + 1 section/steps (- bullets, basic link, no template). Under 150 words.`;
+    userPrompt = `Quick mode: ${prompt}. Concise structure + 1 section/steps (- bullets, basic link, no template). Under 150 words.`;
   }
-  fullPrompt = `${systemInstruction}\n\n${fullPrompt}`;
 
+  // --- 3. CONFIGURE GENERATION AND SAFETY (unchanged) ---
   const generationConfig = {
     temperature: 0.9,
     topK: 1,
@@ -63,32 +66,45 @@ export async function POST(req) {
   ];
 
   try {
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
+    // --- 4. START THE CHAT ---
+    const chat = model.startChat({
+      history: chatHistory,
       generationConfig,
       safetySettings,
-      systemInstruction,
     });
+
+    // Send *only* the new prompt
+    const result = await chat.sendMessage(userPrompt);
 
     const response = result.response;
     const text = response.text();
 
-    const usage = result.response.usageMetadata;
-    const tokensUsed = usage ? (usage.promptTokenCount + (usage.candidates?.[0]?.content?.parts?.[0]?.tokenCount || 0)) : Math.ceil(fullPrompt.length / 4);
-    const estimatedRaw = prompt.length * 2;
-    const savedTokens = Math.max(30, estimatedRaw - tokensUsed);
+    // --- 5. READ THE METADATA ---
+    console.log('Gemini usageMetadata:', result.response.usageMetadata); // For your server debugging
 
-    return new Response(JSON.stringify({ 
-      text, 
-      tokensUsed, 
-      savedTokens 
+    const usage = result.response.usageMetadata;
+    let tokensUsed = 0;
+
+    if (usage && usage.totalTokenCount > 0) {
+      tokensUsed = usage.totalTokenCount;
+    } else if (usage && (usage.promptTokenCount > 0 || usage.candidatesTokenCount > 0)) {
+      tokensUsed = (usage.promptTokenCount || 0) + (usage.candidatesTokenCount || 0);
+    }
+    
+    console.log('Calculated tokensUsed:', tokensUsed); // For your server debugging
+
+    return new Response(JSON.stringify({
+      text,
+      tokensUsed: tokensUsed, // Send the *real* tokens
+      savedTokens: 0 // Frontend handles saved calculation
     }), { status: 200 });
+
   } catch (error) {
     console.error('Gemini API error:', error);
-    return new Response(JSON.stringify({ 
+    return new Response(JSON.stringify({
       message: 'Error from AI',
       tokensUsed: 0,
-      savedTokens: 30 
+      savedTokens: 0
     }), { status: 500 });
   }
 }
