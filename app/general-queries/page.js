@@ -2,8 +2,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { toast } from 'react-hot-toast';
 import ReactMarkdown from 'react-markdown';
-import { MoreVertical, Pencil, Pin, Trash2, X, Save, Ban, Menu, PanelRightClose, PanelRightOpen, Link, BookCopy, Download } from 'lucide-react'; // Added Download
-
+import { 
+  MoreVertical, Pencil, Pin, Trash2, X, Save, Ban, Menu, 
+  PanelRightClose, PanelRightOpen, Link, BookCopy, Download, 
+  AlertCircle, ArrowRight, User // <-- ADDED USER ICON
+} from 'lucide-react';
+import { ChatSkeleton } from '@/app/components/SkeletonLoader';
 // --- NEW: Helper to add Google Font for serif text ---
 const FontLoader = () => (
   <style>{`
@@ -115,6 +119,9 @@ export default function GeneralQueries() {
   const [savedTokens, setSavedTokens] = useState(0); 
   const [animateCounter, setAnimateCounter] = useState(false);
   
+  // --- NEW STATE FOR CONTEXTUAL NUDGE ---
+  const [showAdvisorNudge, setShowAdvisorNudge] = useState(false);
+  
   // --- STATES FOR MENUS, MODALS, AND SIDEBARS ---
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, caseId: null });
   const [showDeleteModal, setShowDeleteModal] = useState(null);
@@ -133,6 +140,16 @@ export default function GeneralQueries() {
 
   useEffect(() => {
     scrollToBottom();
+  }, [messages]);
+
+  // --- NEW: EFFECT FOR NUDGE TRIGGER ---
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastUserMessage = messages.findLast(m => m.role === 'user')?.text?.toLowerCase() || '';
+      if (lastUserMessage.includes('evidence') || lastUserMessage.includes('dispute') || lastUserMessage.includes('stuck') || lastUserMessage.includes('landlord') || lastUserMessage.includes('contract')) {
+        setShowAdvisorNudge(true);
+      }
+    }
   }, [messages]);
 
   // --- Load cases from localStorage on startup ---
@@ -651,11 +668,8 @@ export default function GeneralQueries() {
                     // --- NEW USER QUERY BLOCK ---
                     <div className="bg-gray-50 border border-gray-200 p-4 rounded-lg shadow-sm">
                       <div className="flex items-center gap-3 mb-2">
-                        {/* You need to import the User icon:
-                          import { User } from 'lucide-react';
-                        */}
                         <span className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center">
-                          {/* <User size={18} /> */} {/* Uncomment this after importing User */}
+                          <User size={18} /> {/* <-- FIXED */}
                         </span>
                         <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide">My Query</h3>
                       </div>
@@ -691,12 +705,40 @@ export default function GeneralQueries() {
                 </div>
               ))}
 
-
+              {/* ====================================================
+                === THIS IS THE CORRECTED CODE FOR SKELETON      ===
+                ====================================================
+              */}
               {isLoading && (
                 <div className="bg-white p-6 rounded-lg shadow-lg">
-                  <p className="font-serif text-gray-500 italic">Thinking...</p>
+                  <ChatSkeleton />
                 </div>
               )}
+              {/* === END OF CORRECTION === */}
+
+
+              {/* --- NEW: CONTEXTUAL NUDGE BANNER --- */}
+              {showAdvisorNudge && (
+                <div className="bg-blue-900/20 border border-blue-500/30 p-4 mb-6 rounded-lg flex items-center gap-3">
+                  <AlertCircle size={20} className="text-blue-400 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm text-blue-300 mb-1">This sounds like a detailed scenario—want a structured plan with evidence tips?</p>
+                    <a 
+                      href="/case-advisor" 
+                      className="text-blue-400 hover:text-blue-300 font-medium inline-flex items-center gap-1"
+                    >
+                      Jump to Case Advisor <ArrowRight size={14} />
+                    </a>
+                  </div>
+                  <button 
+                    onClick={() => setShowAdvisorNudge(false)} 
+                    className="text-gray-500 hover:text-gray-400 ml-2"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
+
               <div ref={messagesEndRef} />
             </div>
           </div>

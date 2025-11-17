@@ -6,6 +6,7 @@ import Footer from "./components/Footer";
 import { Toaster } from "react-hot-toast";
 import React, { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation'; 
+import 'react-loading-skeleton/dist/skeleton.css';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

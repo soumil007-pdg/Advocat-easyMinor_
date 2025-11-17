@@ -1,7 +1,7 @@
 'use client';
 import React from "react";
 import Link from "next/link";
-import { Scale } from 'lucide-react'; 
+import { Scale, MessageSquare, FileText } from 'lucide-react'; // Added FileText
 
 // Accept props from layout.js
 const Navbar = ({ isLoggedIn, userEmail, handleLogout }) => {
@@ -25,6 +25,20 @@ const Navbar = ({ isLoggedIn, userEmail, handleLogout }) => {
         {isLoggedIn ? (
           <>
             <span className="text-sm hidden lg:block text-white/80">Welcome, {userEmail}</span>
+            <Link 
+              href="/general-queries" 
+              className="flex items-center gap-1 text-sm font-semibold hover:text-white/70 transition-colors duration-150"
+              title="Quick rights chat for casual queries"
+            >
+              <MessageSquare size={16} /> Queries
+            </Link>
+            <Link 
+              href="/case-advisor" 
+              className="flex items-center gap-1 text-sm font-semibold hover:text-white/70 transition-colors duration-150"
+              title="Build a detailed case plan for stuck scenarios"
+            >
+              <FileText size={16} /> Case Advisor
+            </Link>
             <button
               onClick={handleLogout}
               className="text-sm font-semibold hover:text-white/70 transition-colors duration-150"

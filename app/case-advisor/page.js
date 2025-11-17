@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import jsPDF from 'jspdf'; // For the "Plaint Kit" export
-
+import { ChatSkeleton } from '@/app/components/SkeletonLoader';
 // Updated icons
 import { 
   Download, 
@@ -97,33 +97,33 @@ const parseCitations = (text) => {
 };
 // --- End Citation Parsing ---
 
-// --- ZOD SCHEMA ---
+// --- ZOD SCHEMA (SHORTENED ERROR MESSAGES) ---
 const schema = z.object({
-  caseTitle: z.string().min(1, "Case title is required"),
-  plaintiffName: z.string().min(1, "Plaintiff name is required"),
-  defendantName: z.string().min(1, "Defendant name is required"),
-  caseType: z.string().min(1, "Please select a case type"),
-  state: z.string().min(1, "Please select a state"),
-  city: z.string().min(1, "City is required"),
+  caseTitle: z.string().min(1, "Case title required"),
+  plaintiffName: z.string().min(1, "Plaintiff name required"),
+  defendantName: z.string().min(1, "Defendant name required"),
+  caseType: z.string().min(1, "Case type required"),
+  state: z.string().min(1, "State required"),
+  city: z.string().min(1, "City required"),
   
   causeDate: z.string().optional(),
-  description: z.string().min(10, "Please provide a detailed description (min 10 chars)"),
+  description: z.string().min(10, "Description too short (min 10 chars)"),
   reliefSought: z.string().optional(), 
-  suitValue: z.string().optional().refine(val => !val || /^\d+$/.test(val), "Please enter a number only"),
+  suitValue: z.string().optional().refine(val => !val || /^\d+$/.test(val), "Suit value must be a number"),
   
   priorActions: z.string().optional(),
   digitalEvidence: z.string().optional(),
   urgency: z.string().optional(),
   
   witnesses: z.array(z.object({
-    name: z.string().min(1, "Witness name is required"),
-    connection: z.string().min(1, "Connection is required"),
-    knowledge: z.string().min(1, "Knowledge is required"),
+    name: z.string().min(1, "Witness name required"),
+    connection: z.string().min(1, "Connection required"),
+    knowledge: z.string().min(1, "Knowledge required"),
   })).optional(),
   
   evidence: z.array(z.object({
     type: z.enum(['documents', 'photos', 'testimony', 'other']),
-    description: z.string().min(1, "Description is required"),
+    description: z.string().min(1, "Description required"),
   })).optional(),
 });
 
@@ -331,7 +331,7 @@ export default function CaseAdvisor() {
   };
   // --- End onSubmit ---
 
-  // --- Step Navigation ---
+  // --- Step Navigation (ADDED TOOLTIPS) ---
   const nextStep = async () => {
     let fieldsToValidate;
     if (step === 1) {
@@ -356,7 +356,7 @@ export default function CaseAdvisor() {
   };
   // --- End Step Navigation ---
 
-  // --- PDF Export Function ---
+  // --- PDF Export Function (RENAMED BUTTON TEXT) ---
   const handleExportPDF = () => {
     const formData = getValues();
     const aiResponse = result;
@@ -366,7 +366,7 @@ export default function CaseAdvisor() {
       let yPos = 20; 
 
       doc.setFontSize(18);
-      doc.text("Advocat-Easy: Your Plaint Kit", 105, yPos, { align: 'center' });
+      doc.text("Advocat-Easy: Your Rights Report", 105, yPos, { align: 'center' }); // UPDATED: More user-friendly title
       yPos += 10;
       doc.setFontSize(10);
       doc.text(`Analysis for Case: ${formData.caseTitle}`, 105, yPos, { align: 'center' });
@@ -435,10 +435,10 @@ export default function CaseAdvisor() {
       const aiTextLines = doc.splitTextToSize(aiResponse, 180);
       doc.text(aiTextLines, 14, yPos);
       
-      const fileName = `${formData.caseTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'advocat_plaint_kit'}.pdf`;
+      const fileName = `${formData.caseTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'advocat_rights_report'}.pdf`; // UPDATED: File name
       doc.save(fileName);
       
-      toast.success("Plaint Kit PDF exported!");
+      toast.success("Rights Report PDF exported!");
 
     } catch (err) {
       console.error("PDF Export failed:", err);
@@ -469,7 +469,7 @@ export default function CaseAdvisor() {
           <h1 className="text-4xl font-extrabold mb-6 text-white text-center">Civil Case Advisor</h1>
           <p className="mb-6 text-lg text-gray-300 text-center">Welcome, {userEmail}. Let's build your case for a precise educational analysis.</p>
 
-        {/* Progress Bar */}
+        {/* Progress Bar (ADDED TOOLTIPS) */}
         <div className="mb-8 flex justify-between text-sm text-white">
           {['Basics', 'Facts', 'Evidence', 'Analysis'].map((name, index) => {
              const s = index + 1;
@@ -477,7 +477,7 @@ export default function CaseAdvisor() {
              if (step === s) stateClass = 'text-blue-300 font-semibold';
              if (step > s) stateClass = 'text-green-300';
              return (
-              <div key={s} className={`flex-1 text-center ${stateClass} transition-colors`}>
+              <div key={s} className={`flex-1 text-center ${stateClass} transition-colors`} title={`Step ${s}: ${name} - ${step === s ? 'Current' : step > s ? 'Completed' : 'Upcoming'}`}>
                 Step {s}: {name}
               </div>
              );
@@ -577,7 +577,7 @@ export default function CaseAdvisor() {
                 </div>
               </fieldset>
 
-              <button type="button" onClick={nextStep} className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-semibold flex items-center justify-center gap-2">
+              <button type="button" onClick={nextStep} className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-semibold flex items-center justify-center gap-2" title="Proceed to Case Facts">
                 Next: Case Facts <ArrowRight size={20} />
               </button>
             </div>
@@ -645,8 +645,10 @@ export default function CaseAdvisor() {
               </div>
 
               <div className="flex gap-4">
-                <button type="button" onClick={prevStep} className="flex-1 bg-gray-600 text-white py-3 rounded-lg hover:bg-gray-700 transition font-semibold">Back</button>
-                <button type="button" onClick={nextStep} className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-semibold flex items-center justify-center gap-2">
+                <button type="button" onClick={prevStep} className="flex-1 bg-gray-600 text-white py-3 rounded-lg hover:bg-gray-700 transition font-semibold" title="Go back to Basic Details">
+                  Back
+                </button>
+                <button type="button" onClick={nextStep} className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-semibold flex items-center justify-center gap-2" title="Proceed to Evidence">
                   Next: Evidence <ArrowRight size={20} />
                 </button>
               </div>
@@ -741,8 +743,10 @@ export default function CaseAdvisor() {
 
 
               <div className="flex gap-4 mt-6">
-                <button type="button" onClick={prevStep} className="flex-1 bg-gray-600 text-white py-3 rounded-lg hover:bg-gray-700 transition font-semibold">Back</button>
-                <button type="submit" className="flex-1 bg-orange-600 text-white py-3 rounded-lg hover:bg-orange-700 transition font-semibold" disabled={isLoading}>
+                <button type="button" onClick={prevStep} className="flex-1 bg-gray-600 text-white py-3 rounded-lg hover:bg-gray-700 transition font-semibold" title="Go back to Case Facts">
+                  Back
+                </button>
+                <button type="submit" className="flex-1 bg-orange-600 text-white py-3 rounded-lg hover:bg-orange-700 transition font-semibold" disabled={isLoading} title="Submit for AI analysis">
                   {isLoading ? 'Analyzing...' : 'Submit & Analyze Case'}
                 </button>
               </div>
@@ -780,18 +784,23 @@ export default function CaseAdvisor() {
                     </div>
                   </div>
 
+                  {/* ====================================================
+                    === THIS IS THE CORRECTED CODE FOR SKELETON      ===
+                    ====================================================
+                  */}
                   {isLoading && (
-                    <div className="text-center text-white py-10">
-                      <p className="text-xl font-medium">Analyzing your case...</p>
-                      <p className="text-gray-300">This may take up to 30 seconds. The AI is analyzing your specific situation...</p>
+                    <div className="p-4 bg-gray-800 rounded-lg shadow-md">
+                      <AnalysisSkeleton />
                     </div>
                   )}
 
-                  {result && (
+                  {result && !isLoading && (
                     <div className="case-result-prose max-w-none">
                       <ReactMarkdown>{result}</ReactMarkdown>
                     </div>
                   )}
+                  {/* === END OF CORRECTION === */}
+
                 </div>
 
                 {/* --- Refs Sidebar --- */}
@@ -845,7 +854,7 @@ export default function CaseAdvisor() {
                 </div>
               </div>
 
-              {/* --- Action Buttons --- */}
+              {/* --- Action Buttons (UPDATED BUTTON TEXT) --- */}
               <div className="flex flex-col md:flex-row gap-4 mt-8 border-t border-gray-700 pt-6">
                 <button type="button" onClick={() => { 
                   methods.reset(); 
@@ -856,17 +865,17 @@ export default function CaseAdvisor() {
                   setIsLoading(false); 
                   setActiveCitations([]);
                   setDisplaySuitValue(''); // Reset formatted value
-                }} className="flex-1 bg-gray-600 text-white py-3 px-6 rounded-lg hover:bg-gray-700 transition font-semibold">
+                }} className="flex-1 bg-gray-600 text-white py-3 px-6 rounded-lg hover:bg-gray-700 transition font-semibold" title="Reset and start a new case analysis">
                   Start New Analysis
                 </button>
                 
                 <button 
                   onClick={handleExportPDF}
                   disabled={!result || isLoading}
-                  className="flex-1 bg-green-600 text-white py-3 px-6 rounded-lg hover:bg-green-700 transition font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                  className="flex-1 bg-green-600 text-white py-3 px-6 rounded-lg hover:bg-green-700 transition font-semibold flex items-center justify-center gap-2 disabled:opacity-50" title="Export analysis as PDF report"
                 >
                   <Download size={18} />
-                  Download Plaint Kit (PDF)
+                  Download Your Rights Report (PDF)
                 </button>
               </div>
             </div>
