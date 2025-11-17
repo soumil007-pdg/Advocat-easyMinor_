@@ -534,7 +534,7 @@ export default function GeneralQueries() {
           <span className="text-red-700 font-bold">API Error!</span>
           <span>But we saved your query & banked {pitySaved} tokens 🧡</span>
         </div>,
-        { duration: 5000, style: { background: '#fecaca', color: '#b91c1c' }, icon: '😢' }
+        { duration: 5000, style: { background: '#fecaca', color: '#b91c1c' }, icon: '⚠️', position: 'top-center' }
       );
       // --- End of Tokens Fallback Logic ---
     }
@@ -599,7 +599,7 @@ export default function GeneralQueries() {
                         }`}
                       >
                         <p className="font-medium text-sm truncate">{caseData.title}</p>
-                        <p className="text-xs text-orange-600">{caseData.tokensSaved} tokens saved 🧡</p>
+                        <p className="text-xs text-orange-600">{caseData.tokensSaved} tokens saved</p>
                       </button>
                       <button
                         onClick={(e) => handleContextMenu(e, caseId)}
