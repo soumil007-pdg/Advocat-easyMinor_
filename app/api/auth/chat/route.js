@@ -1,5 +1,4 @@
 //backend page for general query chat
-//backend page for general query chat
 import {
   GoogleGenerativeAI,
   HarmCategory,
