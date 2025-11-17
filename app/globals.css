@@ -3,6 +3,17 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* --- NEW VEZOR-INSPIRED PALETTE (VIBRANT ORANGE-RED) --- */
+  --primary-accent: #FF5B33; /* Vibrant Orange-Red (Hero background & CTA buttons) */
+  --dark-text: #171717;      /* Near Black for dark backgrounds */
+  --gray-light: #f5f5f5;     /* Light Background */
+  --light-accent: #FFC0B2;  /* Lightened shade for secondary text/accents */
+  
+  --white: #ffffff;
+  --blue-300: #93c5fd;
+  --blue-700: #1d4ed8;
+  /* (Keeping previous blues just in case, but using new primary colors below) */
 }
 
 @theme inline {

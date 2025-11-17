@@ -647,17 +647,34 @@ export default function GeneralQueries() {
               {messages.map((msg, index) => (
                 <div key={index} className="mb-8">
                   {msg.role === 'user' ? (
-                    // --- User Query Block ---
+                    
+                    // --- NEW USER QUERY BLOCK ---
                     <div className="bg-gray-50 border border-gray-200 p-4 rounded-lg shadow-sm">
-                      <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">My Query:</h3>
-                      <p className="text-gray-800 text-lg" style={{ whiteSpace: 'pre-wrap' }}>
+                      <div className="flex items-center gap-3 mb-2">
+                        {/* You need to import the User icon:
+                          import { User } from 'lucide-react';
+                        */}
+                        <span className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center">
+                          {/* <User size={18} /> */} {/* Uncomment this after importing User */}
+                        </span>
+                        <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide">My Query</h3>
+                      </div>
+                      <p className="text-gray-800 text-lg pl-11" style={{ whiteSpace: 'pre-wrap' }}>
                         {msg.text}
                       </p>
                     </div>
+
                   ) : (
-                    // --- AI Response Block ---
+
+                    // --- NEW AI RESPONSE BLOCK ---
                     <div className="bg-white p-6 md:p-8 rounded-lg shadow-lg">
-                      <div className="prose-document max-w-none">
+                      <div className="flex items-center gap-3 mb-4">
+                        <span className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
+                          <BookCopy size={18} /> {/* Already imported */}
+                        </span>
+                        <h3 className="text-sm font-semibold text-blue-700 uppercase tracking-wide">Advocat's Analysis</h3>
+                      </div>
+                      <div className="prose-document max-w-none pl-11">
                         <ReactMarkdown 
                           components={{ a: MarkdownLink }}
                         >
@@ -665,7 +682,7 @@ export default function GeneralQueries() {
                         </ReactMarkdown>
                       </div>
                       {msg.saved > 0 && (
-                        <p className="text-xs text-orange-600 mt-6 p-2 bg-orange-50 rounded font-sans font-medium">
+                        <p className="text-xs text-orange-600 mt-6 p-2 bg-orange-50 rounded font-sans font-medium pl-11">
                           Used {msg.used} tokens | Saved {msg.saved} vs. raw chat 🧡
                         </p>
                       )}
@@ -673,6 +690,8 @@ export default function GeneralQueries() {
                   )}
                 </div>
               ))}
+
+
               {isLoading && (
                 <div className="bg-white p-6 rounded-lg shadow-lg">
                   <p className="font-serif text-gray-500 italic">Thinking...</p>

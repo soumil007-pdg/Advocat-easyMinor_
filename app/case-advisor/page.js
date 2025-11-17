@@ -162,7 +162,7 @@ const indianStates = [
   { name: 'Dadra and Nagar Haveli and Daman and Diu', capital: 'Daman' },
   { name: 'Delhi', capital: 'New Delhi' },
   { name: 'Jammu and Kashmir', capital: 'Srinagar (Summer), Jammu (Winter)' },
-  { name: 'Lakshadwep', capital: 'Kavaratti' },
+  { name: 'Lakshadweep', capital: 'Kavaratti' },
   { name: 'Puducherry', capital: 'Pondicherry' }
 ];
 
@@ -191,35 +191,36 @@ export default function CaseAdvisor() {
       evidence: [],
     },
   });
-  const { register, handleSubmit, formState: { errors }, watch, getValues, setValue, trigger } = methods;
+  
+  // --- *** MODIFICATION #1: ADDED dirtyFields *** ---
+  const { 
+    register, 
+    handleSubmit, 
+    formState: { errors, dirtyFields }, // <-- Added dirtyFields
+    watch, 
+    getValues, 
+    setValue, 
+    trigger 
+  } = methods;
 
-  // --- SUIT VALUE FORMATTING (FIXED) ---
-  // 1. Helper moved *before* it's called in useState
+  // --- SUIT VALUE FORMATTING ---
   const formatToIndian = (val) => {
     if (!val) return '';
     const num = Number(val);
     if (isNaN(num)) return '';
     return new Intl.NumberFormat('en-IN').format(num);
   }
-
-  // 2. Watch for the raw value from RHF
   const watchedSuitValue = watch('suitValue');
-  
-  // 3. Local state for the *displayed* formatted value
   const [displaySuitValue, setDisplaySuitValue] = useState(() => 
     formatToIndian(watchedSuitValue)
   );
-
-  // 4. Custom change handler for the suit value input
   const handleSuitValueChange = (e) => {
     const rawValue = e.target.value.replace(/[^0-9]/g, ''); // Get only numbers
     if (rawValue.length > 15) return; // Limit length
-
     setValue('suitValue', rawValue, { shouldValidate: true }); // Update RHF
     setDisplaySuitValue(formatToIndian(rawValue)); // Update visual state
   }
   // --- END SUIT VALUE FORMATTING ---
-
 
   // --- Dynamic Array Functions ---
   const addWitness = () => {
@@ -228,14 +229,12 @@ export default function CaseAdvisor() {
     setValue('witnesses', [...currentWitnesses, newWitness]);
     setWitnesses([...currentWitnesses, newWitness]);
   };
-
   const removeWitness = (index) => {
     const currentWitnesses = getValues('witnesses') || [];
     const updated = currentWitnesses.filter((_, i) => i !== index);
     setValue('witnesses', updated);
     setWitnesses(updated);
   };
-  
   const handleWitnessChange = (index, field, value) => {
     const currentWitnesses = getValues('witnesses') || [];
     const updated = [...currentWitnesses];
@@ -243,21 +242,18 @@ export default function CaseAdvisor() {
     setValue('witnesses', updated);
     setWitnesses(updated);
   };
-
   const addEvidence = () => {
     const newEvidence = { type: 'documents', description: '' };
     const currentEvidence = getValues('evidence') || [];
     setValue('evidence', [...currentEvidence, newEvidence]);
     setEvidence([...currentEvidence, newEvidence]);
   };
-
   const removeEvidence = (index) => {
     const currentEvidence = getValues('evidence') || [];
     const updated = currentEvidence.filter((_, i) => i !== index);
     setValue('evidence', updated);
     setEvidence(updated);
   };
-
   const handleEvidenceChange = (index, field, value) => {
     const currentEvidence = getValues('evidence') || [];
     const updated = [...currentEvidence];
@@ -267,7 +263,7 @@ export default function CaseAdvisor() {
   };
   // --- End Dynamic Array Functions ---
 
-
+  // --- Session Validation (CLEANED - REMOVED DUPLICATE LOGIC) ---
   useEffect(() => {
     const validateSession = async () => {
       const token = localStorage.getItem('sessionToken');
@@ -296,8 +292,9 @@ export default function CaseAdvisor() {
     };
     validateSession();
   }, [router]);
+  // --- End Session Validation ---
 
-  // --- onSubmit with Citation Parsing & "Gamify" Toast ---
+  // --- onSubmit ---
   const onSubmit = async (data) => {
     setIsLoading(true);
     setResult('');
@@ -313,11 +310,8 @@ export default function CaseAdvisor() {
       const apiData = await res.json();
       if (res.ok) {
         setResult(apiData.text);
-
-        // Parse Citations & "Gamify" Toast
         const citations = parseCitations(apiData.text);
         setActiveCitations(citations);
-        
         const actsFound = citations.filter(c => c.type === 'act').length;
         
         if (actsFound > 0) {
@@ -325,7 +319,6 @@ export default function CaseAdvisor() {
         } else {
           toast.success(`Analysis complete!`);
         }
-
       } else {
         toast.error(apiData.message || 'Analysis failed. Please try again.');
         setStep(3); 
@@ -336,6 +329,7 @@ export default function CaseAdvisor() {
     }
     setIsLoading(false);
   };
+  // --- End onSubmit ---
 
   // --- Step Navigation ---
   const nextStep = async () => {
@@ -360,6 +354,7 @@ export default function CaseAdvisor() {
   const prevStep = () => {
     setStep(s => s - 1);
   };
+  // --- End Step Navigation ---
 
   // --- PDF Export Function ---
   const handleExportPDF = () => {
@@ -370,7 +365,6 @@ export default function CaseAdvisor() {
       const doc = new jsPDF();
       let yPos = 20; 
 
-      // PDF Header
       doc.setFontSize(18);
       doc.text("Advocat-Easy: Your Plaint Kit", 105, yPos, { align: 'center' });
       yPos += 10;
@@ -378,7 +372,6 @@ export default function CaseAdvisor() {
       doc.text(`Analysis for Case: ${formData.caseTitle}`, 105, yPos, { align: 'center' });
       yPos += 15;
 
-      // Page 1: Case Summary
       doc.setFontSize(14);
       doc.text("Case Summary (Your Inputs)", 14, yPos);
       yPos += 8;
@@ -401,13 +394,11 @@ export default function CaseAdvisor() {
       addRow("State", `${formData.state} (${formData.city})`);
       addRow("Suit Value (INR)", formData.suitValue);
       addRow("Date of Cause", formData.causeDate);
-      
       addRow("Description", formData.description);
       addRow("Relief Sought", formData.reliefSought);
       addRow("Prior Actions", formData.priorActions);
       addRow("Urgency", formData.urgency);
       
-      // Witnesses
       if (formData.witnesses && formData.witnesses.length > 0) {
         yPos += 5;
         doc.setFont('helvetica', 'bold');
@@ -422,7 +413,6 @@ export default function CaseAdvisor() {
         });
       }
 
-      // Evidence
       if (formData.evidence && formData.evidence.length > 0) {
         yPos += 5;
         doc.setFont('helvetica', 'bold');
@@ -435,7 +425,6 @@ export default function CaseAdvisor() {
         });
       }
 
-      // Page 2+: AI Analysis
       doc.addPage();
       yPos = 20;
       doc.setFontSize(14);
@@ -446,7 +435,6 @@ export default function CaseAdvisor() {
       const aiTextLines = doc.splitTextToSize(aiResponse, 180);
       doc.text(aiTextLines, 14, yPos);
       
-      // Save the PDF
       const fileName = `${formData.caseTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'advocat_plaint_kit'}.pdf`;
       doc.save(fileName);
       
@@ -457,15 +445,18 @@ export default function CaseAdvisor() {
       toast.error("PDF export failed. See console for details.");
     }
   };
+  // --- End PDF Export ---
 
   // Refs Toggle
   const toggleRefs = () => {
     setIsRefsOpen(!isRefsOpen);
   };
 
-  // --- UI/UX FIX: Professional Dark-Mode Input Styles ---
+  // --- *** MODIFICATION #2: UPDATED STYLES *** ---
   const inputClasses = "w-full p-3 border border-gray-600 rounded-lg bg-gray-800 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500";
   const errorInputClasses = "w-full p-3 border border-red-500 rounded-lg bg-gray-800 text-white focus:outline-none focus:ring-2 focus:ring-red-500";
+  // This is the new style for the "wow" effect
+  const successInputClasses = "w-full p-3 border border-green-500 rounded-lg bg-gray-800 text-white focus:outline-none focus:ring-2 focus:ring-green-500";
   // --- End UI/UX FIX ---
 
   if (!isLoggedIn) return <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">Loading...</div>;
@@ -473,9 +464,7 @@ export default function CaseAdvisor() {
   return (
     <>
       <CaseResultStyling />
-      {/* --- UI/UX FIX: Ditch background image, use solid professional bg --- */}
       <div className="min-h-screen w-full bg-gray-900 text-white py-24 pb-20">
-        {/* --- UI/UX FIX: Ditch "floating box" --- */}
         <div className="max-w-4xl mx-auto p-4 md:p-8">
           <h1 className="text-4xl font-extrabold mb-6 text-white text-center">Civil Case Advisor</h1>
           <p className="mb-6 text-lg text-gray-300 text-center">Welcome, {userEmail}. Let's build your case for a precise educational analysis.</p>
@@ -498,64 +487,95 @@ export default function CaseAdvisor() {
           <div className="bg-blue-500 h-2.5 rounded-full" style={{ width: `${(step / 4) * 100}%`, transition: 'width 0.3s' }}></div>
         </div>
 
-
+        {/* --- *** ENTIRE STEP 1 BLOCK IS REPLACED *** --- */}
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 text-white">
           {/* --- STEP 1: Basic Details --- */}
           {step === 1 && (
-            // --- UI/UX FIX: Added card styling ---
             <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6 space-y-6">
               <h3 className="text-white text-2xl font-semibold border-b border-gray-600 pb-2">Step 1: Basic Details</h3>
               
-              <div>
-                <label className="block text-sm font-medium mb-2">Case Title</label>
-                <input {...register('caseTitle')} placeholder="e.g., 'Tenant Dispute for Unpaid Rent'" className={errors.caseTitle ? errorInputClasses : inputClasses} />
-                {errors.caseTitle && <p className="text-red-400 text-sm mt-1">{errors.caseTitle.message}</p>}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* --- NEW: Fieldset for Case Details --- */}
+              <fieldset className="border border-gray-700 rounded-lg p-4 pt-2 space-y-4">
+                <legend className="text-sm font-medium text-gray-300 px-2">Case Details</legend>
+                
                 <div>
-                  <label className="block text-sm font-medium mb-2">Plaintiff Name (Your Name)</label>
-                  <input {...register('plaintiffName')} placeholder="Your Full Name" className={errors.plaintiffName ? errorInputClasses : inputClasses} />
-                  {errors.plaintiffName && <p className="text-red-400 text-sm mt-1">{errors.plaintiffName.message}</p>}
+                  <label className="block text-sm font-medium mb-2">Case Title</label>
+                  <input 
+                    {...register('caseTitle')} 
+                    placeholder="e.g., 'Tenant Dispute for Unpaid Rent'" 
+                    className={errors.caseTitle ? errorInputClasses : (dirtyFields.caseTitle ? successInputClasses : inputClasses)} 
+                  />
+                  {errors.caseTitle && <p className="text-red-400 text-sm mt-1">{errors.caseTitle.message}</p>}
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Defendant Name (Opposing Party)</label>
-                  <input {...register('defendantName')} placeholder="Opposing Party's Name" className={errors.defendantName ? errorInputClasses : inputClasses} />
-                  {errors.defendantName && <p className="text-red-400 text-sm mt-1">{errors.defendantName.message}</p>}
-                </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">Case Type</label>
-                <select {...register('caseType')} className={errors.caseType ? errorInputClasses : inputClasses}>
-                  <option value="">Select Type</option>
-                  <option value="contract">Contract Dispute</option>
-                  <option value="tort">Tort/Negligence</option>
-                  <option value="property">Property Dispute</option>
-                  <option value="family">Family Matter</option>
-                  <option value="debt">Debt Recovery</option>
-                  <option value="cheque-bounce">Cheque Bounce (NI Act)</option>
-                  <option value="consumer">Consumer Dispute</option>
-                  <option value="other">Other Civil Matter</option>
-                </select>
-                {errors.caseType && <p className="text-red-400 text-sm mt-1">{errors.caseType.message}</p>}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Jurisdiction - State/UT</label>
-                  <select {...register('state')} className={errors.state ? errorInputClasses : inputClasses}>
-                    <option value="">Select State/UT</option>
-                    {indianStates.map(state => <option key={state.name} value={state.name}>{state.name}</option>)}
+                  <label className="block text-sm font-medium mb-2">Case Type</label>
+                  <select 
+                    {...register('caseType')} 
+                    className={errors.caseType ? errorInputClasses : (dirtyFields.caseType ? successInputClasses : inputClasses)}
+                  >
+                    <option value="">Select Type</option>
+                    <option value="contract">Contract Dispute</option>
+                    <option value="tort">Tort/Negligence</option>
+                    <option value="property">Property Dispute</option>
+                    <option value="family">Family Matter</option>
+                    <option value="debt">Debt Recovery</option>
+                    <option value="cheque-bounce">Cheque Bounce (NI Act)</option>
+                    <option value="consumer">Consumer Dispute</option>
+                    <option value="other">Other Civil Matter</option>
                   </select>
-                  {errors.state && <p className="text-red-400 text-sm mt-1">{errors.state.message}</p>}
+                  {errors.caseType && <p className="text-red-400 text-sm mt-1">{errors.caseType.message}</p>}
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">City</label>
-                  <input {...register('city')} placeholder="e.g., New Delhi" className={errors.city ? errorInputClasses : inputClasses} />
-                  {errors.city && <p className="text-red-400 text-sm mt-1">{errors.city.message}</p>}
+              </fieldset>
+
+              {/* --- NEW: Fieldset for Participant Details --- */}
+              <fieldset className="border border-gray-700 rounded-lg p-4 pt-2 space-y-4">
+                <legend className="text-sm font-medium text-gray-300 px-2">Participant & Jurisdiction</legend>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Plaintiff Name</label>
+                    <input 
+                      {...register('plaintiffName')} 
+                      placeholder="Your Full Name"
+                      className={errors.plaintiffName ? errorInputClasses : (dirtyFields.plaintiffName ? successInputClasses : inputClasses)} 
+                    />
+                    {errors.plaintiffName && <p className="text-red-400 text-sm mt-1">{errors.plaintiffName.message}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Defendant Name</label>
+                    <input 
+                      {...register('defendantName')} 
+                      placeholder="Opposing Party's Name"
+                      className={errors.defendantName ? errorInputClasses : (dirtyFields.defendantName ? successInputClasses : inputClasses)} 
+                    />
+                    {errors.defendantName && <p className="text-red-400 text-sm mt-1">{errors.defendantName.message}</p>}
+                  </div>
                 </div>
-              </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">State / UT</label>
+                    <select 
+                      {...register('state')} 
+                      className={errors.state ? errorInputClasses : (dirtyFields.state ? successInputClasses : inputClasses)}
+                    >
+                      <option value="">Select State/UT</option>
+                      {indianStates.map(state => <option key={state.name} value={state.name}>{state.name}</option>)}
+                    </select>
+                    {errors.state && <p className="text-red-400 text-sm mt-1">{errors.state.message}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">City</label>
+                    <input 
+                      {...register('city')} 
+                      placeholder="e.g., New Delhi" 
+                      className={errors.city ? errorInputClasses : (dirtyFields.city ? successInputClasses : inputClasses)} 
+                    />
+                    {errors.city && <p className="text-red-400 text-sm mt-1">{errors.city.message}</p>}
+                  </div>
+                </div>
+              </fieldset>
 
               <button type="button" onClick={nextStep} className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-semibold flex items-center justify-center gap-2">
                 Next: Case Facts <ArrowRight size={20} />
@@ -563,27 +583,42 @@ export default function CaseAdvisor() {
             </div>
           )}
 
-          {/* --- STEP 2: Case Facts --- */}
+          {/* --- STEP 2: Case Facts (Applying "Wow" Effect) --- */}
           {step === 2 && (
             <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6 space-y-6">
               <h3 className="text-white text-2xl font-semibold border-b border-gray-600 pb-2">Step 2: Case Facts</h3>
               
               <div>
                 <label className="block text-sm font-medium mb-2">Brief Description of Facts</label>
-                <textarea {...register('description')} placeholder="Describe what happened, in order. Be clear and objective." rows={5} className={errors.description ? errorInputClasses : inputClasses} />
+                <textarea 
+                  {...register('description')} 
+                  placeholder="Describe what happened, in order. Be clear and objective." 
+                  rows={5} 
+                  className={errors.description ? errorInputClasses : (dirtyFields.description ? successInputClasses : inputClasses)} 
+                />
                 {errors.description && <p className="text-red-400 text-sm mt-1">{errors.description.message}</p>}
               </div>
 
               <div>
                 <label className="block text-sm font-medium mb-2">Relief Sought (What do you want the court to do?)</label>
-                <textarea {...register('reliefSought')} placeholder="e.g., '1. Recovery of INR 50,000. 2. Compensation for mental harassment. 3. Injunction to stop the defendant from...'" rows={3} className={inputClasses} />
+                <textarea 
+                  {...register('reliefSought')} 
+                  placeholder="e.g., '1. Recovery of INR 50,000. 2. Compensation for mental harassment. 3. Injunction to stop the defendant from...'" 
+                  rows={3} 
+                  className={errors.reliefSought ? errorInputClasses : (dirtyFields.reliefSought ? successInputClasses : inputClasses)} 
+                />
                 <p className="text-gray-400 text-xs mt-1">Tip: Be as specific as possible. This is optional but helps the AI.</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-2">Date of Cause of Action (Optional)</label>
-                  <input type="date" {...register('causeDate')} className={inputClasses} max={new Date().toISOString().split('T')[0]} />
+                  <input 
+                    type="date" 
+                    {...register('causeDate')} 
+                    className={errors.causeDate ? errorInputClasses : (dirtyFields.causeDate ? successInputClasses : inputClasses)} 
+                    max={new Date().toISOString().split('T')[0]} 
+                  />
                   <p className="text-gray-400 text-xs mt-1">When did the main issue (e.g., non-payment) happen?</p>
                 </div>
                 <div>
@@ -592,7 +627,7 @@ export default function CaseAdvisor() {
                     value={displaySuitValue}
                     onChange={handleSuitValueChange}
                     placeholder="e.g., 50,000" 
-                    className={errors.suitValue ? errorInputClasses : inputClasses} 
+                    className={errors.suitValue ? errorInputClasses : (dirtyFields.suitValue ? successInputClasses : inputClasses)} 
                     name="suitValue" 
                   />
                   {errors.suitValue && <p className="text-red-400 text-sm mt-1">{errors.suitValue.message}</p>}
@@ -601,7 +636,12 @@ export default function CaseAdvisor() {
 
               <div>
                 <label className="block text-sm font-medium mb-2">Prior Actions Taken (Optional)</label>
-                <textarea {...register('priorActions')} placeholder="e.g., 'Sent a formal legal notice on [date]', 'Had multiple phone calls', 'Sent warning emails'" rows={2} className={inputClasses} />
+                <textarea 
+                  {...register('priorActions')} 
+                  placeholder="e.g., 'Sent a formal legal notice on [date]', 'Had multiple phone calls', 'Sent warning emails'" 
+                  rows={2} 
+                  className={errors.priorActions ? errorInputClasses : (dirtyFields.priorActions ? successInputClasses : inputClasses)} 
+                />
               </div>
 
               <div className="flex gap-4">
@@ -613,7 +653,7 @@ export default function CaseAdvisor() {
             </div>
           )}
 
-          {/* --- STEP 3: Evidence & Witnesses --- */}
+          {/* --- STEP 3: Evidence & Witnesses (Applying "Wow" Effect) --- */}
           {step === 3 && (
             <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6 space-y-6">
               <h3 className="text-white text-2xl font-semibold border-b border-gray-600 pb-2">Step 3: Evidence & Witnesses</h3>
@@ -624,20 +664,17 @@ export default function CaseAdvisor() {
                 {witnesses.map((w, i) => (
                   <div key={i} className="border border-gray-600 p-3 rounded-lg mb-3 bg-gray-900/50 space-y-2">
                     <input 
-                      value={w.name} 
-                      onChange={(e) => handleWitnessChange(i, 'name', e.target.value)} 
+                      {...register(`witnesses.${i}.name`)}
                       placeholder="Witness Name" 
-                      className={`${inputClasses} mb-1`} 
+                      className={`${inputClasses} mb-1`} // Note: "wow" effect is harder on dynamic fields, keeping default
                     />
                     <input 
-                      value={w.connection} 
-                      onChange={(e) => handleWitnessChange(i, 'connection', e.target.value)} 
+                      {...register(`witnesses.${i}.connection`)}
                       placeholder="Connection to case (e.g., neighbor, employee)" 
                       className={`${inputClasses} mb-1`} 
                     />
                     <textarea 
-                      value={w.knowledge} 
-                      onChange={(e) => handleWitnessChange(i, 'knowledge', e.target.value)} 
+                      {...register(`witnesses.${i}.knowledge`)}
                       placeholder="What they know (e.g., 'Saw the incident', 'Was present during contract signing')" 
                       rows={2}
                       className={inputClasses} 
@@ -658,8 +695,7 @@ export default function CaseAdvisor() {
                 {evidence.map((e, i) => (
                   <div key={i} className="border border-gray-600 p-3 rounded-lg mb-3 bg-gray-900/50 space-y-2">
                     <select 
-                      value={e.type} 
-                      onChange={(ev) => handleEvidenceChange(i, 'type', ev.target.value)} 
+                      {...register(`evidence.${i}.type`)}
                       className={`${inputClasses} mb-1`}
                     >
                       <option value="documents">Documents</option>
@@ -668,8 +704,7 @@ export default function CaseAdvisor() {
                       <option value="other">Other</option>
                     </select>
                     <textarea 
-                      value={e.description} 
-                      onChange={(ev) => handleEvidenceChange(i, 'description', ev.target.value)} 
+                      {...register(`evidence.${i}.description`)}
                       placeholder="Description (e.g., 'Signed rent agreement', 'Photos of the leaking roof')" 
                       rows={2} 
                       className={inputClasses} 
@@ -687,11 +722,19 @@ export default function CaseAdvisor() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 <div>
                   <label className="block text-sm font-medium mb-2">Urgency/Timeline? (Optional)</label>
-                  <input {...register('urgency')} placeholder="e.g., 'Eviction notice by Dec 1st'" className={inputClasses} />
+                  <input 
+                    {...register('urgency')} 
+                    placeholder="e.g., 'Eviction notice by Dec 1st'" 
+                    className={errors.urgency ? errorInputClasses : (dirtyFields.urgency ? successInputClasses : inputClasses)} 
+                  />
                 </div>
                  <div>
                   <label className="block text-sm font-medium mb-2">Digital Evidence Status (Optional)</label>
-                  <input {...register('digitalEvidence')} placeholder="e.g., 'All docs scanned as PDF'" className={inputClasses} />
+                  <input 
+                    {...register('digitalEvidence')} 
+                    placeholder="e.g., 'All docs scanned as PDF'" 
+                    className={errors.digitalEvidence ? errorInputClasses : (dirtyFields.digitalEvidence ? successInputClasses : inputClasses)} 
+                  />
                   <p className="text-gray-400 text-xs mt-1">Helps AI check for IT Act, 2000 relevance.</p>
                 </div>
               </div>
@@ -804,7 +847,7 @@ export default function CaseAdvisor() {
 
               {/* --- Action Buttons --- */}
               <div className="flex flex-col md:flex-row gap-4 mt-8 border-t border-gray-700 pt-6">
-                <button onClick={() => { 
+                <button type="button" onClick={() => { 
                   methods.reset(); 
                   setStep(1); 
                   setWitnesses([]); 
