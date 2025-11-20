@@ -2,9 +2,18 @@
 import React from 'react';
 import Link from 'next/link';
 import { MessageSquare, FileText, Scale } from 'lucide-react';
-import { useRouter } from 'next/navigation'; // For potential redirects, but not used here
+import { useAuth } from '@/hooks/useAuth'; // Import the new hook
 
 export default function Dashboard() {
+  // Use the hook to handle auth checks automatically
+  const { isLoggedIn, loading } = useAuth(true); 
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  }
+
+  if (!isLoggedIn) return null; // useAuth will handle redirect
+
   return (
     <div className="min-h-screen py-12 px-4" style={{ backgroundColor: 'var(--gray-light)' }}>
       <div className="container mx-auto max-w-4xl">
@@ -56,7 +65,7 @@ export default function Dashboard() {
 
         {/* Quick Tips */}
         <div className="bg-white rounded-xl p-6 shadow-md">
-          <h3 className="text-xl font-semibold text-gray-900 mb-4">Pro Tip</h3>
+          <h3 className="text-xl font-semibold text-gray-900 mb-4">Tip</h3>
           <p className="text-gray-600">
             Start with Quick Chat for basics, then level up to Case Builder for precision. Remember: This is educational—always consult a pro!
           </p>

@@ -5,6 +5,7 @@ import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import { Toaster } from "react-hot-toast";
 import React, { useState, useEffect } from 'react';
+// --- 1. ADD usePathname HERE ---
 import { useRouter, usePathname } from 'next/navigation'; 
 import 'react-loading-skeleton/dist/skeleton.css';
 
@@ -22,8 +23,8 @@ export default function RootLayout({ children }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userEmail, setUserEmail] = useState('');
   const router = useRouter();
-  
-  // No longer checking isHomePage since the Navbar is always visible now.
+  // --- 2. GET CURRENT PATH ---
+  const pathname = usePathname(); 
 
   useEffect(() => {
     const validateSession = async () => {
@@ -52,7 +53,7 @@ export default function RootLayout({ children }) {
       }
     };
     validateSession();
-  }, []); 
+  }, [pathname]); // --- 3. ADD pathname TO DEPENDENCY ARRAY (This fixes the state sync) ---
 
   const handleLogout = async () => {
     const token = localStorage.getItem('sessionToken');
@@ -67,7 +68,7 @@ export default function RootLayout({ children }) {
     localStorage.removeItem('sessionToken');
     setIsLoggedIn(false);
     setUserEmail('');
-    router.push('/'); 
+    router.push('/auth'); 
   };
 
   return (
@@ -75,7 +76,6 @@ export default function RootLayout({ children }) {
       <body 
         className={`${geistSans.variable} ${geistMono.variable} antialiased flex flex-col min-h-screen`} 
       >
-        {/* --- NAVBAR IS ALWAYS SHOWN NOW --- */}
         <Navbar 
             isLoggedIn={isLoggedIn} 
             userEmail={userEmail} 
@@ -87,8 +87,6 @@ export default function RootLayout({ children }) {
         </main>
         
         <Toaster /> 
-
-        {/* Footer is always shown now */}
         <Footer />
       </body>
     </html>

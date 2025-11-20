@@ -1,32 +1,31 @@
-import { MongoClient } from 'mongodb';
-
-const uri = 'mongodb://localhost:27017';
-let client; // Reuse client connection
+import clientPromise from '@/lib/db';
 
 export async function POST(req) {
-  const { token } = await req.json();
-
   try {
-    if (!client || !client.topology?.isConnected()) {
-      client = new MongoClient(uri);
-      await client.connect();
-      console.log('New MongoDB client connected');
-    }
-    const db = client.db('auth_db');
-    const sessions = db.collection('sessions');
+    const { token } = await req.json();
 
     if (!token) {
-      console.error('No token provided');
       return new Response(JSON.stringify({ isValid: false, message: 'No token provided' }), { status: 400 });
     }
 
+    // Use the shared client
+    const client = await clientPromise;
+    const db = client.db('auth_db');
+    const sessions = db.collection('sessions');
+
     const session = await sessions.findOne({ token });
+    
     if (!session) {
-      console.error('Session not found for token:', token);
       return new Response(JSON.stringify({ isValid: false, message: 'Session not found' }), { status: 401 });
     }
 
-    console.log('Session validated for token:', token);
+    // Check Expiration
+    if (session.expiresAt && new Date() > new Date(session.expiresAt)) {
+       // Token is expired, remove it
+       await sessions.deleteOne({ token });
+       return new Response(JSON.stringify({ isValid: false, message: 'Session expired' }), { status: 401 });
+    }
+
     return new Response(JSON.stringify({ isValid: true, email: session.email }), { status: 200 });
   } catch (err) {
     console.error('Validation error:', err);

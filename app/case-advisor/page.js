@@ -1,14 +1,13 @@
 'use client';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import ReactMarkdown from 'react-markdown';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import jsPDF from 'jspdf'; // For the "Plaint Kit" export
+import jsPDF from 'jspdf';
 import { ChatSkeleton } from '@/app/components/SkeletonLoader';
-// Updated icons
 import { 
   Download, 
   BookCopy, 
@@ -18,152 +17,99 @@ import {
   Trash2,
   PanelRightClose,
   PanelRightOpen,
-  X
+  UploadCloud,
+  FileText,
+  AlertTriangle,
+  CheckCircle,
+  Scale 
 } from 'lucide-react';
 
-// --- Styling component for the AI's report ---
+// --- Styles ---
 const CaseResultStyling = () => (
   <style>{`
-    .case-result-prose {
-      color: #e5e7eb; /* Light gray text */
-      font-size: 1rem;
-      line-height: 1.7;
-    }
-    .case-result-prose h3 {
-      font-size: 1.25rem;
-      font-weight: 600;
-      color: #ffffff;
-      margin-top: 1.5em;
-      margin-bottom: 0.5em;
-      padding-bottom: 0.25em;
-      border-bottom: 1px solid #4b5563; /* Gray border */
-    }
-    .case-result-prose p {
-      margin-bottom: 1em;
-    }
-    .case-result-prose ul {
-      list-style-type: disc;
-      padding-left: 1.5em;
-      margin-bottom: 1em;
-    }
-    .case-result-prose li {
-      margin-bottom: 0.5em;
-    }
-    .case-result-prose strong {
-      font-weight: 600;
-      color: #ffffff;
-    }
-    .case-result-prose a {
-      color: #60a5fa; /* Light blue links */
-      text-decoration: underline;
-    }
-    .case-result-prose a:hover {
-      color: #93c5fd;
-    }
+    .case-result-prose { color: #e5e7eb; font-size: 1rem; line-height: 1.7; }
+    .case-result-prose h3 { font-size: 1.25rem; font-weight: 600; color: #ffffff; margin-top: 1.5em; border-bottom: 1px solid #4b5563; padding-bottom: 0.5rem; margin-bottom: 1rem; }
+    .case-result-prose p { margin-bottom: 1em; }
+    .case-result-prose ul { list-style-type: disc; padding-left: 1.5em; margin-bottom: 1em; }
+    .case-result-prose li { margin-bottom: 0.5em; }
+    .case-result-prose strong { color: #60a5fa; font-weight: 600; } 
+    .case-result-prose a { color: #60a5fa; text-decoration: underline; }
+    
+    /* Custom Scrollbar */
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
   `}</style>
 );
-// --- End of styling component ---
 
-// --- Citation Parsing Function ---
+// --- Helper: Citation Parser ---
 const parseCitations = (text) => {
   if (!text) return [];
   const citations = [];
   
-  // Regex for links
   const linkRegex = /(https?:\/\/[^\s\)]+)/g;
   let match;
   while ((match = linkRegex.exec(text)) !== null) {
-    const precedingText = text.substring(Math.max(0, match.index - 10), match.index);
-    if (!precedingText.endsWith('](')) {
-      citations.push({ type: 'link', title: match[1], href: match[1] });
+    const pre = text.substring(Math.max(0, match.index - 10), match.index);
+    if (!pre.endsWith('](')) citations.push({ type: 'link', title: match[1], href: match[1] });
+  }
+  
+  const actRegex = /((?:Section|Article|Order|Rule)\s+\d+[A-Za-z]*|(?:The\s+)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+Act(?:,\s+\d{4})?)/g;
+  while ((match = actRegex.exec(text)) !== null) {
+    if (!['The', 'Act', 'Section'].includes(match[0])) {
+        citations.push({ type: 'act', title: match[0], href: null });
     }
   }
-
-  // Regex for Markdown links [title](href)
-  const markdownLinkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g;
-  while ((match = markdownLinkRegex.exec(text)) !== null) {
-    citations.push({ type: 'link', title: match[1], href: match[2] });
-  }
-
-  // Regex for legal acts (e.g., "The Copyright Act, 1957")
-  const actRegex = /(The\s+[A-Z][a-z]+(\s+[A-Z][a-z]+)*\s+Act(,\s+\d{4})?)/g;
-  while ((match = actRegex.exec(text)) !== null) {
-    citations.push({ type: 'act', title: match[1], href: null });
-  }
-
-  // De-duplicate
-  const uniqueCitations = Array.from(new Map(citations.map(c => [c.title, c])).values());
-  return uniqueCitations;
+  
+  const unique = [];
+  const seen = new Set();
+  citations.forEach(c => {
+      if (!seen.has(c.title)) {
+          seen.add(c.title);
+          unique.push(c);
+      }
+  });
+  return unique;
 };
-// --- End Citation Parsing ---
 
-// --- ZOD SCHEMA (SHORTENED ERROR MESSAGES) ---
+// --- Schema ---
 const schema = z.object({
-  caseTitle: z.string().min(1, "Case title required"),
-  plaintiffName: z.string().min(1, "Plaintiff name required"),
-  defendantName: z.string().min(1, "Defendant name required"),
-  caseType: z.string().min(1, "Case type required"),
-  state: z.string().min(1, "State required"),
-  city: z.string().min(1, "City required"),
-  
+  caseTitle: z.string().min(1, "Case Title is required"),
+  plaintiffName: z.string().min(1, "Plaintiff Name is required"),
+  defendantName: z.string().min(1, "Defendant Name is required"),
+  caseType: z.string().min(1, "Case Type is required"),
+  state: z.string().min(1, "State is required"),
+  city: z.string().min(1, "City is required"),
   causeDate: z.string().optional(),
-  description: z.string().min(10, "Description too short (min 10 chars)"),
+  description: z.string().min(10, "Description must be at least 10 characters"),
   reliefSought: z.string().optional(), 
-  suitValue: z.string().optional().refine(val => !val || /^\d+$/.test(val), "Suit value must be a number"),
-  
+  suitValue: z.string().optional(),
   priorActions: z.string().optional(),
-  digitalEvidence: z.string().optional(),
+  certificateStatus: z.string().optional(),
+  certificateFile: z.any().optional(),
   urgency: z.string().optional(),
-  
   witnesses: z.array(z.object({
-    name: z.string().min(1, "Witness name required"),
-    connection: z.string().min(1, "Connection required"),
-    knowledge: z.string().min(1, "Knowledge required"),
+    name: z.string().min(1, "Witness Name is required"),
+    connection: z.string().min(1, "Witness Connection is required"),
+    knowledge: z.string().min(1, "Witness Knowledge is required"),
   })).optional(),
-  
   evidence: z.array(z.object({
     type: z.enum(['documents', 'photos', 'testimony', 'other']),
-    description: z.string().min(1, "Description required"),
+    description: z.string().min(1, "Evidence Description is required"),
+    fileName: z.string().optional() 
   })).optional(),
 });
 
-// --- Full list of Indian States & UTs ---
 const indianStates = [
-  { name: 'Andhra Pradesh', capital: 'Amaravati' },
-  { name: 'Arunachal Pradesh', capital: 'Itanagar' },
-  { name: 'Assam', capital: 'Dispur' },
-  { name: 'Bihar', capital: 'Patna' },
-  { name: 'Chhattisgarh', capital: 'Raipur' },
-  { name: 'Goa', capital: 'Panaji' },
-  { name: 'Gujarat', capital: 'Gandhinagar' },
-  { name: 'Haryana', capital: 'Chandigarh' },
-  { name: 'Himachal Pradesh', capital: 'Shimla (Summer), Dharamshala (Winter)' },
-  { name: 'Jharkhand', capital: 'Ranchi' },
-  { name: 'Karnataka', capital: 'Bengaluru' },
-  { name: 'Kerala', capital: 'Thiruvananthapuram' },
-  { name: 'Madhya Pradesh', capital: 'Bhopal' },
-  { name: 'Maharashtra', capital: 'Mumbai (Summer), Nagpur (Winter)' },
-  { name: 'Manipur', capital: 'Imphal' },
-  { name: 'Meghalaya', capital: 'Shillong' },
-  { name: 'Mizoram', capital: 'Aizawl' },
-  { name: 'Nagaland', capital: 'Kohima' },
-  { name: 'Odisha', capital: 'Bhubaneswar' },
-  { name: 'Punjab', capital: 'Chandigarh' },
-  { name: 'Rajasthan', capital: 'Jaipur' },
-  { name: 'Sikkim', capital: 'Gangtok' },
-  { name: 'Tamil Nadu', capital: 'Chennai' },
-  { name: 'Telangana', capital: 'Hyderabad' },
-  { name: 'Tripura', capital: 'Agartala' },
-  { name: 'Uttar Pradesh', capital: 'Lucknow' },
-  { name: 'Uttarakhand', capital: 'Bhararisain (Summer), Dehradun (Winter)' },
-  { name: 'West Bengal', capital: 'Kolkata' },
-  { name: 'Andaman and Nicobar Islands', capital: 'Port Blair' },
-  { name: 'Chandigarh', capital: 'Chandigarh' },
-  { name: 'Dadra and Nagar Haveli and Daman and Diu', capital: 'Daman' },
-  { name: 'Delhi', capital: 'New Delhi' },
-  { name: 'Jammu and Kashmir', capital: 'Srinagar (Summer), Jammu (Winter)' },
-  { name: 'Lakshadweep', capital: 'Kavaratti' },
-  { name: 'Puducherry', capital: 'Pondicherry' }
+  { name: 'Andhra Pradesh' }, { name: 'Arunachal Pradesh' }, { name: 'Assam' }, { name: 'Bihar' }, 
+  { name: 'Chhattisgarh' }, { name: 'Goa' }, { name: 'Gujarat' }, { name: 'Haryana' }, 
+  { name: 'Himachal Pradesh' }, { name: 'Jharkhand' }, { name: 'Karnataka' }, { name: 'Kerala' }, 
+  { name: 'Madhya Pradesh' }, { name: 'Maharashtra' }, { name: 'Manipur' }, { name: 'Meghalaya' }, 
+  { name: 'Mizoram' }, { name: 'Nagaland' }, { name: 'Odisha' }, { name: 'Punjab' }, 
+  { name: 'Rajasthan' }, { name: 'Sikkim' }, { name: 'Tamil Nadu' }, { name: 'Telangana' }, 
+  { name: 'Tripura' }, { name: 'Uttar Pradesh' }, { name: 'Uttarakhand' }, { name: 'West Bengal' }, 
+  { name: 'Delhi' }, { name: 'Jammu and Kashmir' }, { name: 'Ladakh' }, { name: 'Puducherry' }
 ];
 
 export default function CaseAdvisor() {
@@ -172,129 +118,104 @@ export default function CaseAdvisor() {
   const [step, setStep] = useState(1);
   const [result, setResult] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [savedTokens, setSavedTokens] = useState(0);
+  
   const [witnesses, setWitnesses] = useState([]); 
   const [evidence, setEvidence] = useState([]);
-  const router = useRouter();
-
-  // --- Refs Sidebar State ---
   const [isRefsOpen, setIsRefsOpen] = useState(true);
   const [activeCitations, setActiveCitations] = useState([]);
+  const router = useRouter();
 
   const methods = useForm({
     resolver: zodResolver(schema),
+    mode: 'onChange', 
     defaultValues: {
       caseTitle: '', plaintiffName: '', defendantName: '', caseType: '', state: '', city: '',
       causeDate: '', description: '', reliefSought: '', suitValue: '',
-      priorActions: '', digitalEvidence: '', urgency: '',
-      witnesses: [],
-      evidence: [],
+      priorActions: '', certificateStatus: '', certificateFile: null, urgency: '',
+      witnesses: [], evidence: [],
     },
   });
   
-  // --- *** MODIFICATION #1: ADDED dirtyFields *** ---
-  const { 
-    register, 
-    handleSubmit, 
-    formState: { errors, dirtyFields }, // <-- Added dirtyFields
-    watch, 
-    getValues, 
-    setValue, 
-    trigger 
-  } = methods;
+  const { register, handleSubmit, formState: { errors, dirtyFields }, watch, getValues, setValue, trigger } = methods;
 
-  // --- SUIT VALUE FORMATTING ---
-  const formatToIndian = (val) => {
-    if (!val) return '';
-    const num = Number(val);
-    if (isNaN(num)) return '';
-    return new Intl.NumberFormat('en-IN').format(num);
-  }
+  const watchedEvidence = watch('evidence');
+  const watchedCertFile = watch('certificateFile');
+
   const watchedSuitValue = watch('suitValue');
-  const [displaySuitValue, setDisplaySuitValue] = useState(() => 
-    formatToIndian(watchedSuitValue)
-  );
+  const [displaySuitValue, setDisplaySuitValue] = useState('');
   const handleSuitValueChange = (e) => {
-    const rawValue = e.target.value.replace(/[^0-9]/g, ''); // Get only numbers
-    if (rawValue.length > 15) return; // Limit length
-    setValue('suitValue', rawValue, { shouldValidate: true }); // Update RHF
-    setDisplaySuitValue(formatToIndian(rawValue)); // Update visual state
-  }
-  // --- END SUIT VALUE FORMATTING ---
+    const rawValue = e.target.value.replace(/[^0-9]/g, '');
+    if (rawValue.length > 15) return;
+    setValue('suitValue', rawValue, { shouldValidate: true });
+    setDisplaySuitValue(rawValue ? new Intl.NumberFormat('en-IN').format(rawValue) : '');
+  };
 
-  // --- Dynamic Array Functions ---
   const addWitness = () => {
-    const newWitness = { name: '', connection: '', knowledge: '' };
-    const currentWitnesses = getValues('witnesses') || [];
-    setValue('witnesses', [...currentWitnesses, newWitness]);
-    setWitnesses([...currentWitnesses, newWitness]);
+    const current = getValues('witnesses') || [];
+    setValue('witnesses', [...current, { name: '', connection: '', knowledge: '' }]);
+    setWitnesses([...current, {}]);
   };
   const removeWitness = (index) => {
-    const currentWitnesses = getValues('witnesses') || [];
-    const updated = currentWitnesses.filter((_, i) => i !== index);
+    const current = getValues('witnesses');
+    const updated = current.filter((_, i) => i !== index);
     setValue('witnesses', updated);
     setWitnesses(updated);
   };
-  const handleWitnessChange = (index, field, value) => {
-    const currentWitnesses = getValues('witnesses') || [];
-    const updated = [...currentWitnesses];
-    updated[index][field] = value;
-    setValue('witnesses', updated);
-    setWitnesses(updated);
-  };
+
   const addEvidence = () => {
-    const newEvidence = { type: 'documents', description: '' };
-    const currentEvidence = getValues('evidence') || [];
-    setValue('evidence', [...currentEvidence, newEvidence]);
-    setEvidence([...currentEvidence, newEvidence]);
+    const current = getValues('evidence') || [];
+    setValue('evidence', [...current, { type: 'documents', description: '', fileName: '' }]);
+    setEvidence([...current, {}]);
   };
   const removeEvidence = (index) => {
-    const currentEvidence = getValues('evidence') || [];
-    const updated = currentEvidence.filter((_, i) => i !== index);
+    const current = getValues('evidence');
+    const updated = current.filter((_, i) => i !== index);
     setValue('evidence', updated);
     setEvidence(updated);
   };
-  const handleEvidenceChange = (index, field, value) => {
-    const currentEvidence = getValues('evidence') || [];
-    const updated = [...currentEvidence];
-    updated[index][field] = value;
-    setValue('evidence', updated);
-    setEvidence(updated);
-  };
-  // --- End Dynamic Array Functions ---
 
-  // --- Session Validation (CLEANED - REMOVED DUPLICATE LOGIC) ---
-  useEffect(() => {
-    const validateSession = async () => {
-      const token = localStorage.getItem('sessionToken');
-      if (!token) {
-        router.push('/auth');
-        return;
-      }
-      try {
-        const res = await fetch('/api/auth/validate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token }),
-        });
-        const data = await res.json();
-        if (res.ok && data.isValid) {
-          setIsLoggedIn(true);
-          setUserEmail(data.email);
-        } else {
-          localStorage.removeItem('sessionToken');
-          router.push('/auth');
+  const handleFileChange = (e, index) => {
+    const file = e.target.files[0];
+    if (file) setValue(`evidence.${index}.fileName`, file.name);
+  };
+
+  const handleCertFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setValue('certificateStatus', `Attached: ${file.name}`);
+      setValue('certificateFile', e.target.files);
+    }
+  };
+
+  const getInputClass = (fieldName, isError) => {
+    const base = "w-full p-3 border rounded-lg bg-gray-800 text-white focus:outline-none transition-all duration-200 ";
+    if (isError) return base + "border-red-500 focus:ring-2 focus:ring-red-500";
+    
+    let isDirty = false;
+    if (typeof fieldName === 'string') isDirty = dirtyFields[fieldName];
+    else if (Array.isArray(fieldName)) isDirty = fieldName.some(f => dirtyFields[f]);
+
+    if (fieldName.includes('.')) {
+        const parts = fieldName.split('.');
+        let current = dirtyFields;
+        for (const part of parts) {
+            if (current && current[part]) current = current[part];
+            else { current = undefined; break; }
         }
-      } catch (err) {
-        localStorage.removeItem('sessionToken');
-        router.push('/auth');
-      }
-    };
-    validateSession();
-  }, [router]);
-  // --- End Session Validation ---
+        if (current) isDirty = true;
+    }
 
-  // --- onSubmit ---
+    if (isDirty) return base + "border-green-500 focus:ring-2 focus:ring-green-500 shadow-[0_0_10px_rgba(34,197,94,0.2)]";
+    return base + "border-gray-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-500";
+  };
+
+  useEffect(() => {
+    const token = localStorage.getItem('sessionToken');
+    if (!token) { router.push('/auth'); return; }
+    setIsLoggedIn(true); 
+    setUserEmail('User');
+  }, []);
+
   const onSubmit = async (data) => {
     setIsLoading(true);
     setResult('');
@@ -302,162 +223,178 @@ export default function CaseAdvisor() {
     setStep(4); 
     
     try {
+      const payload = {
+        ...data,
+        certificateFile: data.certificateFile?.[0]?.name || "Not uploaded",
+        evidence: data.evidence?.map(item => ({
+          type: item.type,
+          description: item.description,
+          attachedFile: item.fileName || "No file attached" 
+        }))
+      };
+
       const res = await fetch('/api/case-advisor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data), 
+        body: JSON.stringify(payload), 
       });
       const apiData = await res.json();
+      
       if (res.ok) {
         setResult(apiData.text);
         const citations = parseCitations(apiData.text);
         setActiveCitations(citations);
-        const actsFound = citations.filter(c => c.type === 'act').length;
-        
-        if (actsFound > 0) {
-          toast.success(`Analysis complete! Found ${actsFound} relevant legal acts.`);
-        } else {
-          toast.success(`Analysis complete!`);
-        }
+        toast.success('Analysis Complete!');
       } else {
-        toast.error(apiData.message || 'Analysis failed. Please try again.');
+        toast.error(apiData.message || 'Analysis failed.');
         setStep(3); 
       }
     } catch (err) {
-      toast.error('Connection issue. Please check your network and retry.');
+      toast.error('Connection Error. Please try again.');
       setStep(3);
     }
     setIsLoading(false);
   };
-  // --- End onSubmit ---
 
-  // --- Step Navigation (ADDED TOOLTIPS) ---
+  const onError = (errors) => {
+    console.log("Validation Errors:", errors);
+    const firstErrorKey = Object.keys(errors)[0];
+    const errorMsg = errors[firstErrorKey]?.message || "Please check missing fields";
+    
+    if (firstErrorKey === 'witnesses') toast.error("Please fill in all Witness details.");
+    else if (firstErrorKey === 'evidence') toast.error("Please describe your Evidence.");
+    else toast.error(`Missing: ${errorMsg}`);
+  };
+
   const nextStep = async () => {
-    let fieldsToValidate;
-    if (step === 1) {
-      fieldsToValidate = ['caseTitle', 'plaintiffName', 'defendantName', 'caseType', 'state', 'city'];
-    } else if (step === 2) {
-      fieldsToValidate = ['description'];
-    } else {
-      setStep(s => s + 1);
-      return;
-    }
+    let fields = [];
+    if (step === 1) fields = ['caseTitle', 'plaintiffName', 'defendantName', 'caseType', 'state', 'city'];
+    if (step === 2) fields = ['description'];
     
-    const isValid = await trigger(fieldsToValidate);
-    if (isValid) {
-      setStep(s => s + 1);
-    } else {
-      toast.error('Please fill in all required fields for this step.');
-    }
+    const isValid = await trigger(fields);
+    if (isValid) setStep(s => s + 1);
+    else toast.error('Please fill required fields');
   };
 
-  const prevStep = () => {
-    setStep(s => s - 1);
-  };
-  // --- End Step Navigation ---
-
-  // --- PDF Export Function (RENAMED BUTTON TEXT) ---
+  // --- IMPROVED PDF GENERATION ---
+  // This function formats the Markdown result into a clean PDF
   const handleExportPDF = () => {
-    const formData = getValues();
-    const aiResponse = result;
-    
-    try {
-      const doc = new jsPDF();
-      let yPos = 20; 
-
-      doc.setFontSize(18);
-      doc.text("Advocat-Easy: Your Rights Report", 105, yPos, { align: 'center' }); // UPDATED: More user-friendly title
-      yPos += 10;
-      doc.setFontSize(10);
-      doc.text(`Analysis for Case: ${formData.caseTitle}`, 105, yPos, { align: 'center' });
-      yPos += 15;
-
-      doc.setFontSize(14);
-      doc.text("Case Summary (Your Inputs)", 14, yPos);
-      yPos += 8;
-
-      const addRow = (title, value) => {
-        if (!value) return; 
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.text(`${title}:`, 20, yPos);
-        doc.setFont('helvetica', 'normal');
-        doc.text(doc.splitTextToSize(value, 150), 60, yPos); 
-        const textHeight = doc.getTextDimensions(doc.splitTextToSize(value, 150)).h;
-        yPos += Math.max(10, textHeight + 2); 
-      };
-
-      addRow("Case Title", formData.caseTitle);
-      addRow("Plaintiff", formData.plaintiffName);
-      addRow("Defendant", formData.defendantName);
-      addRow("Case Type", formData.caseType);
-      addRow("State", `${formData.state} (${formData.city})`);
-      addRow("Suit Value (INR)", formData.suitValue);
-      addRow("Date of Cause", formData.causeDate);
-      addRow("Description", formData.description);
-      addRow("Relief Sought", formData.reliefSought);
-      addRow("Prior Actions", formData.priorActions);
-      addRow("Urgency", formData.urgency);
-      
-      if (formData.witnesses && formData.witnesses.length > 0) {
-        yPos += 5;
-        doc.setFont('helvetica', 'bold');
-        doc.text("Witnesses:", 20, yPos);
-        yPos += 8;
-        doc.setFont('helvetica', 'normal');
-        formData.witnesses.forEach((w, i) => {
-          doc.text(`- Witness ${i+1}: ${w.name} (${w.connection})`, 25, yPos);
-          yPos += 5;
-          doc.text(`  Knowledge: ${doc.splitTextToSize(w.knowledge, 140)}`, 30, yPos);
-          yPos += doc.getTextDimensions(doc.splitTextToSize(w.knowledge, 140)).h + 5;
-        });
-      }
-
-      if (formData.evidence && formData.evidence.length > 0) {
-        yPos += 5;
-        doc.setFont('helvetica', 'bold');
-        doc.text("Evidence:", 20, yPos);
-        yPos += 8;
-        doc.setFont('helvetica', 'normal');
-        formData.evidence.forEach((e, i) => {
-          doc.text(`- Item ${i+1} (${e.type}): ${doc.splitTextToSize(e.description, 140)}`, 25, yPos);
-          yPos += doc.getTextDimensions(doc.splitTextToSize(e.description, 140)).h + 5;
-        });
-      }
-
-      doc.addPage();
-      yPos = 20;
-      doc.setFontSize(14);
-      doc.text("AI Educational Analysis", 14, yPos);
-      yPos += 10;
-      
-      doc.setFontSize(10);
-      const aiTextLines = doc.splitTextToSize(aiResponse, 180);
-      doc.text(aiTextLines, 14, yPos);
-      
-      const fileName = `${formData.caseTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'advocat_rights_report'}.pdf`; // UPDATED: File name
-      doc.save(fileName);
-      
-      toast.success("Rights Report PDF exported!");
-
-    } catch (err) {
-      console.error("PDF Export failed:", err);
-      toast.error("PDF export failed. See console for details.");
+    if (!result) {
+        toast.error("No analysis to export yet.");
+        return;
     }
-  };
-  // --- End PDF Export ---
 
-  // Refs Toggle
-  const toggleRefs = () => {
-    setIsRefsOpen(!isRefsOpen);
-  };
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 15;
+    const maxLineWidth = pageWidth - (margin * 2);
+    
+    let yPos = 20; 
 
-  // --- *** MODIFICATION #2: UPDATED STYLES *** ---
-  const inputClasses = "w-full p-3 border border-gray-600 rounded-lg bg-gray-800 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500";
-  const errorInputClasses = "w-full p-3 border border-red-500 rounded-lg bg-gray-800 text-white focus:outline-none focus:ring-2 focus:ring-red-500";
-  // This is the new style for the "wow" effect
-  const successInputClasses = "w-full p-3 border border-green-500 rounded-lg bg-gray-800 text-white focus:outline-none focus:ring-2 focus:ring-green-500";
-  // --- End UI/UX FIX ---
+    // --- Header ---
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(22);
+    doc.setTextColor(41, 128, 185); // Blue Title
+    doc.text("Advocat-Easy Case Report", pageWidth / 2, yPos, { align: "center" });
+    
+    yPos += 10;
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text("Generated by Advocat-Easy AI Legal Advisor", pageWidth / 2, yPos, { align: "center" });
+    
+    yPos += 6;
+    doc.setLineWidth(0.5);
+    doc.setDrawColor(200);
+    doc.line(margin, yPos, pageWidth - margin, yPos);
+    yPos += 10;
+
+    // --- Case Info Block ---
+    doc.setFontSize(12);
+    doc.setTextColor(0);
+    doc.setFont("helvetica", "bold");
+    doc.text(`Case: ${getValues('caseTitle') || 'Untitled Case'}`, margin, yPos);
+    yPos += 6;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text(`Client: ${getValues('plaintiffName')} | Date: ${new Date().toLocaleDateString()}`, margin, yPos);
+    yPos += 10;
+
+    // --- Parsing and Formatting the AI Response ---
+    const splitText = result.split('\n');
+    
+    doc.setFontSize(11);
+    
+    splitText.forEach(line => {
+        // Check for Page Break
+        if (yPos > 280) {
+            doc.addPage();
+            yPos = 20;
+        }
+
+        // Clean up Markdown symbols
+        const cleanLine = line.replace(/\*\*/g, '').replace(/###/g, '').trim();
+
+        if (line.startsWith('###')) {
+            // H3 Headers (e.g., "Legal Framework")
+            yPos += 4;
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(14);
+            doc.setTextColor(44, 62, 80); // Dark Blue/Grey
+            doc.text(cleanLine, margin, yPos);
+            yPos += 2; // Underline space
+            doc.setDrawColor(44, 62, 80);
+            doc.setLineWidth(0.3);
+            doc.line(margin, yPos, margin + 80, yPos); // Short underline
+            yPos += 8;
+        } else if (line.includes('**')) {
+            // Bold bullet points (e.g., "**Step 1:** Do this")
+            // Simple styling: Make the whole line bold-ish or darker
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(11);
+            doc.setTextColor(0);
+            
+            // Handle long text wrapping
+            const wrappedText = doc.splitTextToSize(cleanLine, maxLineWidth);
+            doc.text(wrappedText, margin, yPos);
+            yPos += (wrappedText.length * 6) + 2;
+
+        } else if (line.trim().startsWith('*') || line.trim().startsWith('-')) {
+            // Standard Bullet points
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(11);
+            doc.setTextColor(50);
+            const bulletText = `•  ${cleanLine.replace(/^[\*\-]\s*/, '')}`;
+            const wrappedText = doc.splitTextToSize(bulletText, maxLineWidth);
+            doc.text(wrappedText, margin + 2, yPos); // Indent slightly
+            yPos += (wrappedText.length * 6) + 2;
+        } else if (line.trim().length > 0) {
+            // Normal Paragraph text
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(11);
+            doc.setTextColor(20);
+            const wrappedText = doc.splitTextToSize(cleanLine, maxLineWidth);
+            doc.text(wrappedText, margin, yPos);
+            yPos += (wrappedText.length * 6) + 2;
+        } else {
+            // Empty line spacing
+            yPos += 4;
+        }
+    });
+
+    // --- Footer ---
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(9);
+        doc.setTextColor(150);
+        doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin, 290, { align: "right" });
+        doc.text("Educational Use Only. Consult a Lawyer.", margin, 290);
+    }
+
+    doc.save(`${getValues('caseTitle') || 'Advocat_Case_Report'}.pdf`);
+    toast.success("Formatted PDF Downloaded");
+  };
+  // --- END PDF GENERATION ---
 
   if (!isLoggedIn) return <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">Loading...</div>;
 
@@ -467,420 +404,284 @@ export default function CaseAdvisor() {
       <div className="min-h-screen w-full bg-gray-900 text-white py-24 pb-20">
         <div className="max-w-4xl mx-auto p-4 md:p-8">
           <h1 className="text-4xl font-extrabold mb-6 text-white text-center">Civil Case Advisor</h1>
-          <p className="mb-6 text-lg text-gray-300 text-center">Welcome, {userEmail}. Let's build your case for a precise educational analysis.</p>
+          
+          {/* Progress Bar */}
+          <div className="mb-8 flex justify-between text-sm text-white">
+            {['Basics', 'Facts', 'Evidence', 'Analysis'].map((name, index) => (
+               <div key={index} className={`flex-1 text-center ${step === index+1 ? 'text-blue-300 font-bold' : 'text-gray-500'}`}>Step {index+1}: {name}</div>
+            ))}
+          </div>
+          <div className="w-full bg-gray-700 rounded-full h-2 mb-8"><div className="bg-blue-500 h-2 rounded-full" style={{ width: `${(step/4)*100}%` }}></div></div>
 
-        {/* Progress Bar (ADDED TOOLTIPS) */}
-        <div className="mb-8 flex justify-between text-sm text-white">
-          {['Basics', 'Facts', 'Evidence', 'Analysis'].map((name, index) => {
-             const s = index + 1;
-             let stateClass = 'text-gray-400';
-             if (step === s) stateClass = 'text-blue-300 font-semibold';
-             if (step > s) stateClass = 'text-green-300';
-             return (
-              <div key={s} className={`flex-1 text-center ${stateClass} transition-colors`} title={`Step ${s}: ${name} - ${step === s ? 'Current' : step > s ? 'Completed' : 'Upcoming'}`}>
-                Step {s}: {name}
-              </div>
-             );
-          })}
-        </div>
-        <div className="w-full bg-gray-700 rounded-full h-2.5 mb-8">
-          <div className="bg-blue-500 h-2.5 rounded-full" style={{ width: `${(step / 4) * 100}%`, transition: 'width 0.3s' }}></div>
-        </div>
-
-        {/* --- *** ENTIRE STEP 1 BLOCK IS REPLACED *** --- */}
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 text-white">
-          {/* --- STEP 1: Basic Details --- */}
-          {step === 1 && (
-            <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6 space-y-6">
-              <h3 className="text-white text-2xl font-semibold border-b border-gray-600 pb-2">Step 1: Basic Details</h3>
-              
-              {/* --- NEW: Fieldset for Case Details --- */}
-              <fieldset className="border border-gray-700 rounded-lg p-4 pt-2 space-y-4">
-                <legend className="text-sm font-medium text-gray-300 px-2">Case Details</legend>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-2">Case Title</label>
-                  <input 
-                    {...register('caseTitle')} 
-                    placeholder="e.g., 'Tenant Dispute for Unpaid Rent'" 
-                    className={errors.caseTitle ? errorInputClasses : (dirtyFields.caseTitle ? successInputClasses : inputClasses)} 
-                  />
-                  {errors.caseTitle && <p className="text-red-400 text-sm mt-1">{errors.caseTitle.message}</p>}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">Case Type</label>
-                  <select 
-                    {...register('caseType')} 
-                    className={errors.caseType ? errorInputClasses : (dirtyFields.caseType ? successInputClasses : inputClasses)}
-                  >
-                    <option value="">Select Type</option>
-                    <option value="contract">Contract Dispute</option>
-                    <option value="tort">Tort/Negligence</option>
-                    <option value="property">Property Dispute</option>
-                    <option value="family">Family Matter</option>
-                    <option value="debt">Debt Recovery</option>
-                    <option value="cheque-bounce">Cheque Bounce (NI Act)</option>
-                    <option value="consumer">Consumer Dispute</option>
-                    <option value="other">Other Civil Matter</option>
-                  </select>
-                  {errors.caseType && <p className="text-red-400 text-sm mt-1">{errors.caseType.message}</p>}
-                </div>
-              </fieldset>
-
-              {/* --- NEW: Fieldset for Participant Details --- */}
-              <fieldset className="border border-gray-700 rounded-lg p-4 pt-2 space-y-4">
-                <legend className="text-sm font-medium text-gray-300 px-2">Participant & Jurisdiction</legend>
-                
+          <form onSubmit={handleSubmit(onSubmit, onError)} className="space-y-6">
+            
+            {/* STEP 1: Basics */}
+            {step === 1 && (
+              <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6 space-y-6">
+                <h3 className="text-2xl font-semibold border-b border-gray-600 pb-2">Step 1: Basic Details</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Plaintiff Name</label>
-                    <input 
-                      {...register('plaintiffName')} 
-                      placeholder="Your Full Name"
-                      className={errors.plaintiffName ? errorInputClasses : (dirtyFields.plaintiffName ? successInputClasses : inputClasses)} 
-                    />
-                    {errors.plaintiffName && <p className="text-red-400 text-sm mt-1">{errors.plaintiffName.message}</p>}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Defendant Name</label>
-                    <input 
-                      {...register('defendantName')} 
-                      placeholder="Opposing Party's Name"
-                      className={errors.defendantName ? errorInputClasses : (dirtyFields.defendantName ? successInputClasses : inputClasses)} 
-                    />
-                    {errors.defendantName && <p className="text-red-400 text-sm mt-1">{errors.defendantName.message}</p>}
-                  </div>
+                    <div>
+                      <label className="text-sm mb-1 block">Case Title</label>
+                      <input {...register('caseTitle')} className={getInputClass('caseTitle', errors.caseTitle)} placeholder="e.g. Landlord Dispute" />
+                    </div>
+                    <div>
+                      <label className="text-sm mb-1 block">Case Type</label>
+                      <select {...register('caseType')} className={getInputClass('caseType', errors.caseType)}>
+                        <option value="">Select Type</option>
+                        <option value="contract">Contract</option>
+                        <option value="property">Property</option>
+                        <option value="family">Family</option>
+                        <option value="consumer">Consumer</option>
+                        <option value="tort">Tort/Civil Wrong</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
                 </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">State / UT</label>
-                    <select 
-                      {...register('state')} 
-                      className={errors.state ? errorInputClasses : (dirtyFields.state ? successInputClasses : inputClasses)}
-                    >
-                      <option value="">Select State/UT</option>
-                      {indianStates.map(state => <option key={state.name} value={state.name}>{state.name}</option>)}
+                    <div>
+                        <label className="text-sm mb-1 block">Plaintiff Name</label>
+                        <input {...register('plaintiffName')} placeholder="Your Name" className={getInputClass('plaintiffName', errors.plaintiffName)} />
+                    </div>
+                    <div>
+                        <label className="text-sm mb-1 block">Defendant Name</label>
+                        <input {...register('defendantName')} placeholder="Opponent Name" className={getInputClass('defendantName', errors.defendantName)} />
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <select {...register('state')} className={getInputClass('state', errors.state)}>
+                      <option value="">Select State</option>
+                      {indianStates.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
                     </select>
-                    {errors.state && <p className="text-red-400 text-sm mt-1">{errors.state.message}</p>}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">City</label>
-                    <input 
-                      {...register('city')} 
-                      placeholder="e.g., New Delhi" 
-                      className={errors.city ? errorInputClasses : (dirtyFields.city ? successInputClasses : inputClasses)} 
-                    />
-                    {errors.city && <p className="text-red-400 text-sm mt-1">{errors.city.message}</p>}
-                  </div>
+                    <input {...register('city')} placeholder="City" className={getInputClass('city', errors.city)} />
                 </div>
-              </fieldset>
-
-              <button type="button" onClick={nextStep} className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-semibold flex items-center justify-center gap-2" title="Proceed to Case Facts">
-                Next: Case Facts <ArrowRight size={20} />
-              </button>
-            </div>
-          )}
-
-          {/* --- STEP 2: Case Facts (Applying "Wow" Effect) --- */}
-          {step === 2 && (
-            <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6 space-y-6">
-              <h3 className="text-white text-2xl font-semibold border-b border-gray-600 pb-2">Step 2: Case Facts</h3>
-              
-              <div>
-                <label className="block text-sm font-medium mb-2">Brief Description of Facts</label>
-                <textarea 
-                  {...register('description')} 
-                  placeholder="Describe what happened, in order. Be clear and objective." 
-                  rows={5} 
-                  className={errors.description ? errorInputClasses : (dirtyFields.description ? successInputClasses : inputClasses)} 
-                />
-                {errors.description && <p className="text-red-400 text-sm mt-1">{errors.description.message}</p>}
+                <button type="button" onClick={nextStep} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold flex justify-center items-center gap-2">Next: Facts <ArrowRight size={20}/></button>
               </div>
+            )}
 
-              <div>
-                <label className="block text-sm font-medium mb-2">Relief Sought (What do you want the court to do?)</label>
-                <textarea 
-                  {...register('reliefSought')} 
-                  placeholder="e.g., '1. Recovery of INR 50,000. 2. Compensation for mental harassment. 3. Injunction to stop the defendant from...'" 
-                  rows={3} 
-                  className={errors.reliefSought ? errorInputClasses : (dirtyFields.reliefSought ? successInputClasses : inputClasses)} 
-                />
-                <p className="text-gray-400 text-xs mt-1">Tip: Be as specific as possible. This is optional but helps the AI.</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* STEP 2: Facts */}
+            {step === 2 && (
+              <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6 space-y-6">
+                <h3 className="text-2xl font-semibold border-b border-gray-600 pb-2">Step 2: The Facts</h3>
                 <div>
-                  <label className="block text-sm font-medium mb-2">Date of Cause of Action (Optional)</label>
-                  <input 
-                    type="date" 
-                    {...register('causeDate')} 
-                    className={errors.causeDate ? errorInputClasses : (dirtyFields.causeDate ? successInputClasses : inputClasses)} 
-                    max={new Date().toISOString().split('T')[0]} 
-                  />
-                  <p className="text-gray-400 text-xs mt-1">When did the main issue (e.g., non-payment) happen?</p>
+                    <label className="text-sm mb-1 block">Brief Description</label>
+                    <textarea {...register('description')} rows={6} placeholder="What happened? Be specific." className={getInputClass('description', errors.description)} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-2">Estimated Suit Value (INR) (Optional)</label>
-                  <input 
-                    value={displaySuitValue}
-                    onChange={handleSuitValueChange}
-                    placeholder="e.g., 50,000" 
-                    className={errors.suitValue ? errorInputClasses : (dirtyFields.suitValue ? successInputClasses : inputClasses)} 
-                    name="suitValue" 
-                  />
-                  {errors.suitValue && <p className="text-red-400 text-sm mt-1">{errors.suitValue.message}</p>}
+                    {/* REVERTED: Restored the explicit question about outcome */}
+                    <label className="text-sm mb-1 block">What outcome do you want? (e.g. Compensation)</label>
+                    <textarea {...register('reliefSought')} rows={2} placeholder="e.g. Recovery of 50,000 INR, Stop construction, Apology" className={getInputClass('reliefSought', errors.reliefSought)} />
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Prior Actions Taken (Optional)</label>
-                <textarea 
-                  {...register('priorActions')} 
-                  placeholder="e.g., 'Sent a formal legal notice on [date]', 'Had multiple phone calls', 'Sent warning emails'" 
-                  rows={2} 
-                  className={errors.priorActions ? errorInputClasses : (dirtyFields.priorActions ? successInputClasses : inputClasses)} 
-                />
-              </div>
-
-              <div className="flex gap-4">
-                <button type="button" onClick={prevStep} className="flex-1 bg-gray-600 text-white py-3 rounded-lg hover:bg-gray-700 transition font-semibold" title="Go back to Basic Details">
-                  Back
-                </button>
-                <button type="button" onClick={nextStep} className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-semibold flex items-center justify-center gap-2" title="Proceed to Evidence">
-                  Next: Evidence <ArrowRight size={20} />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* --- STEP 3: Evidence & Witnesses (Applying "Wow" Effect) --- */}
-          {step === 3 && (
-            <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6 space-y-6">
-              <h3 className="text-white text-2xl font-semibold border-b border-gray-600 pb-2">Step 3: Evidence & Witnesses</h3>
-
-              {/* Witnesses Dynamic Form */}
-              <div>
-                <label className="block text-sm font-medium mb-2">Key Witnesses (Optional)</label>
-                {witnesses.map((w, i) => (
-                  <div key={i} className="border border-gray-600 p-3 rounded-lg mb-3 bg-gray-900/50 space-y-2">
-                    <input 
-                      {...register(`witnesses.${i}.name`)}
-                      placeholder="Witness Name" 
-                      className={`${inputClasses} mb-1`} // Note: "wow" effect is harder on dynamic fields, keeping default
-                    />
-                    <input 
-                      {...register(`witnesses.${i}.connection`)}
-                      placeholder="Connection to case (e.g., neighbor, employee)" 
-                      className={`${inputClasses} mb-1`} 
-                    />
-                    <textarea 
-                      {...register(`witnesses.${i}.knowledge`)}
-                      placeholder="What they know (e.g., 'Saw the incident', 'Was present during contract signing')" 
-                      rows={2}
-                      className={inputClasses} 
-                    />
-                    <button type="button" onClick={() => removeWitness(i)} className="text-red-400 hover:text-red-300 flex items-center gap-1 text-sm">
-                      <Trash2 size={16} /> Remove Witness
-                    </button>
-                  </div>
-                ))}
-                <button type="button" onClick={addWitness} className="flex items-center gap-2 text-blue-300 hover:text-blue-200 font-medium">
-                  <Plus size={18} /> Add Witness
-                </button>
-              </div>
-
-              {/* Evidence Dynamic Form */}
-              <div className="mt-4">
-                <label className="block text-sm font-medium mb-2">Evidence Available (Optional)</label>
-                {evidence.map((e, i) => (
-                  <div key={i} className="border border-gray-600 p-3 rounded-lg mb-3 bg-gray-900/50 space-y-2">
-                    <select 
-                      {...register(`evidence.${i}.type`)}
-                      className={`${inputClasses} mb-1`}
-                    >
-                      <option value="documents">Documents</option>
-                      <option value="photos">Photos / Videos</option>
-                      <option value="testimony">Testimony (self or other)</option>
-                      <option value="other">Other</option>
-                    </select>
-                    <textarea 
-                      {...register(`evidence.${i}.description`)}
-                      placeholder="Description (e.g., 'Signed rent agreement', 'Photos of the leaking roof')" 
-                      rows={2} 
-                      className={inputClasses} 
-                    />
-                    <button type="button" onClick={() => removeEvidence(i)} className="text-red-400 hover:text-red-300 flex items-center gap-1 text-sm">
-                      <Trash2 size={16} /> Remove Evidence
-                    </button>
-                  </div>
-                ))}
-                <button type="button" onClick={addEvidence} className="flex items-center gap-2 text-blue-300 hover:text-blue-200 font-medium">
-                  <Plus size={18} /> Add Evidence
-                </button>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div>
+                      <label className="text-sm mb-1 block">Date of Cause (DD/MM/YYYY)</label>
+                      <input type="date" lang="en-GB" {...register('causeDate')} className={getInputClass('causeDate', errors.causeDate)} />
+                   </div>
+                   <div>
+                      <label className="text-sm mb-1 block">Suit Value (INR)</label>
+                      <input value={displaySuitValue} onChange={handleSuitValueChange} placeholder="e.g. 50,000" className={getInputClass('suitValue', errors.suitValue)} />
+                   </div>
+                </div>
                 <div>
-                  <label className="block text-sm font-medium mb-2">Urgency/Timeline? (Optional)</label>
-                  <input 
-                    {...register('urgency')} 
-                    placeholder="e.g., 'Eviction notice by Dec 1st'" 
-                    className={errors.urgency ? errorInputClasses : (dirtyFields.urgency ? successInputClasses : inputClasses)} 
-                  />
+                    <label className="text-sm mb-1 block">Prior Actions</label>
+                    <textarea {...register('priorActions')} rows={2} placeholder="Did you send a legal notice?" className={getInputClass('priorActions', errors.priorActions)} />
                 </div>
-                 <div>
-                  <label className="block text-sm font-medium mb-2">Digital Evidence Status (Optional)</label>
-                  <input 
-                    {...register('digitalEvidence')} 
-                    placeholder="e.g., 'All docs scanned as PDF'" 
-                    className={errors.digitalEvidence ? errorInputClasses : (dirtyFields.digitalEvidence ? successInputClasses : inputClasses)} 
-                  />
-                  <p className="text-gray-400 text-xs mt-1">Helps AI check for IT Act, 2000 relevance.</p>
+                <div className="flex gap-4">
+                  <button type="button" onClick={() => setStep(1)} className="flex-1 bg-gray-600 hover:bg-gray-500 py-3 rounded-lg">Back</button>
+                  <button type="button" onClick={nextStep} className="flex-1 bg-blue-600 hover:bg-blue-700 py-3 rounded-lg font-bold">Next: Evidence</button>
                 </div>
               </div>
+            )}
 
-
-              <div className="flex gap-4 mt-6">
-                <button type="button" onClick={prevStep} className="flex-1 bg-gray-600 text-white py-3 rounded-lg hover:bg-gray-700 transition font-semibold" title="Go back to Case Facts">
-                  Back
-                </button>
-                <button type="submit" className="flex-1 bg-orange-600 text-white py-3 rounded-lg hover:bg-orange-700 transition font-semibold" disabled={isLoading} title="Submit for AI analysis">
-                  {isLoading ? 'Analyzing...' : 'Submit & Analyze Case'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* --- STEP 4: Analysis & Result (NEW 2-Panel Layout) --- */}
-          {step === 4 && (
-            <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
-              <div className="flex justify-between items-center mb-4 border-b border-gray-600 pb-2">
-                <h3 className="text-white text-2xl font-semibold">Step 4: Analysis</h3>
-                <button
-                  onClick={toggleRefs}
-                  className="text-gray-400 hover:text-white p-1 rounded-full hover:bg-gray-700"
-                  title={isRefsOpen ? "Hide references" : "Show references"}
-                >
-                  {isRefsOpen ? <PanelRightClose size={20} /> : <PanelRightOpen size={20} />}
-                </button>
-              </div>
-              
-              <div className="flex flex-col md:flex-row -mx-4">
+            {/* STEP 3: Evidence & Witnesses */}
+            {step === 3 && (
+              <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6 space-y-8">
+                <h3 className="text-2xl font-semibold border-b border-gray-600 pb-2">Step 3: Evidence & Witnesses</h3>
                 
-                {/* --- Main Analysis Panel --- */}
-                <div className="flex-1 px-4 overflow-y-auto" style={{maxHeight: '70vh'}}>
-                  {/* Summary of Inputs */}
-                  <div className="bg-gray-800 p-4 rounded-lg mb-6 border border-gray-700">
-                    <h4 className="text-lg font-semibold text-white mb-3">Your Case Summary:</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                      <p><strong>Case Type:</strong> {watch('caseType')}</p>
-                      <p><strong>Suit Value:</strong> {displaySuitValue ? `₹${displaySuitValue}` : 'N/A'}</p>
-                      <p><strong>State:</strong> {watch('state')} ({watch('city')})</p>
-                      <p><strong>Prior Actions:</strong> {watch('priorActions') || 'None listed'}</p>
-                      <p><strong>Witnesses:</strong> {watch('witnesses')?.length || 0} added</p>
-                      <p><strong>Evidence:</strong> {watch('evidence')?.length || 0} items</p>
-                    </div>
-                  </div>
+                {/* 1. Evidence Section */}
+                <div className="space-y-4">
+                   <label className="block text-lg font-medium text-blue-300 border-b border-blue-900/50 pb-1">1. Physical & Electronic Evidence</label>
+                   <p className="text-xs text-gray-400">
+                     Upload relevant files (Photos, Videos, Contracts). 
+                   </p>
 
-                  {/* ====================================================
-                    === THIS IS THE CORRECTED CODE FOR SKELETON      ===
-                    ====================================================
-                  */}
-                  {isLoading && (
-                    <div className="p-4 bg-gray-800 rounded-lg shadow-md">
-                      <AnalysisSkeleton />
-                    </div>
-                  )}
+                   {evidence.map((e, i) => (
+                     <div key={i} className="p-4 bg-gray-900 border border-gray-700 rounded-lg space-y-3 relative">
+                        <button type="button" onClick={() => removeEvidence(i)} className="absolute top-3 right-3 text-red-400 hover:text-red-300"><Trash2 size={18}/></button>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <select {...register(`evidence.${i}.type`)} className={getInputClass(`evidence.${i}.type`, false)}>
+                             <option value="documents">Document</option>
+                             <option value="photos">Photo/Video</option>
+                             <option value="testimony">Testimony</option>
+                             <option value="other">Other</option>
+                          </select>
+                          
+                          <div className="md:col-span-2 relative">
+                             <label className="flex items-center justify-center w-full p-3 border-2 border-dashed border-gray-600 rounded-lg cursor-pointer hover:border-blue-500 hover:bg-gray-800 transition">
+                                <div className="flex items-center gap-2 text-sm text-gray-300">
+                                   <UploadCloud size={20} />
+                                   <span className="truncate max-w-[200px]">
+                                     {watch(`evidence.${i}.fileName`) || "Click to attach file"}
+                                   </span>
+                                </div>
+                                <input type="file" className="hidden" onChange={(e) => handleFileChange(e, i)} />
+                             </label>
+                          </div>
+                        </div>
 
-                  {result && !isLoading && (
-                    <div className="case-result-prose max-w-none">
-                      <ReactMarkdown>{result}</ReactMarkdown>
-                    </div>
-                  )}
-                  {/* === END OF CORRECTION === */}
-
+                        <textarea 
+                          {...register(`evidence.${i}.description`)} 
+                          placeholder="Description: What does this prove?"
+                          className={getInputClass(`evidence.${i}.description`, errors.evidence?.[i]?.description)} 
+                          rows={2}
+                        />
+                     </div>
+                   ))}
+                   <button type="button" onClick={addEvidence} className="flex items-center gap-2 text-green-400 hover:text-green-300 text-sm font-semibold">
+                     <Plus size={16}/> Add Evidence Item
+                   </button>
                 </div>
 
-                {/* --- Refs Sidebar --- */}
-                <div 
-                  className={`w-full md:w-72 flex-shrink-0 px-4 space-y-4 overflow-y-auto border-l-0 md:border-l border-gray-700 mt-6 md:mt-0 pt-6 md:pt-0 border-t md:border-t-0 ${
-                    isRefsOpen ? 'block' : 'hidden'
-                  }`}
-                  style={{maxHeight: '70vh'}}
-                >
-                  <h4 className="text-lg font-semibold text-white">References & Citations</h4>
-                  {activeCitations.length === 0 && !isLoading ? (
-                    <p className="text-sm text-gray-400 italic">
-                      {result ? "No specific legal acts or links were cited in this analysis." : "Citations will appear here after analysis."}
-                    </p>
-                  ) : (
-                    <ul className="space-y-3">
-                      {activeCitations.map((ref, index) => (
-                        <li key={index} className="flex items-start gap-3">
-                          <div>
-                            {ref.type === 'link' ? (
-                              <span className="flex items-center justify-center w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex-shrink-0">
-                                <LinkIcon size={14} />
-                              </span>
-                            ) : (
-                              <span className="flex items-center justify-center w-6 h-6 bg-purple-100 text-purple-600 rounded-full flex-shrink-0">
-                                <BookCopy size={14} />
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            {ref.href ? (
-                              <a
-                                href={ref.href}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-sm font-medium text-blue-400 hover:text-blue-300 hover:underline break-words"
-                                title={ref.title}
-                              >
-                                {ref.title}
-                              </a>
-                            ) : (
-                              <span className="text-sm font-medium text-gray-300 break-words" title={ref.title}>
-                                {ref.title}
-                              </span>
-                            )}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                {/* 2. Witnesses Section */}
+                <div className="space-y-4">
+                   <label className="block text-lg font-medium text-blue-300 border-b border-blue-900/50 pb-1">2. Witnesses</label>
+                   <p className="text-xs text-gray-400">People who can testify in court.</p>
+
+                   {witnesses.map((w, i) => (
+                     <div key={i} className="p-4 bg-gray-900 border border-gray-700 rounded-lg space-y-4 relative">
+                        <button type="button" onClick={() => removeWitness(i)} className="absolute top-3 right-3 text-red-400 hover:text-red-300"><Trash2 size={16}/></button>
+                        
+                        {/* Row 1: Name */}
+                        <div>
+                            <label className="text-xs text-gray-500 mb-1 block uppercase tracking-wider">Witness Name</label>
+                            <input 
+                                {...register(`witnesses.${i}.name`)} 
+                                placeholder="Full Name of Witness" 
+                                className={getInputClass(`witnesses.${i}.name`, errors.witnesses?.[i]?.name)} 
+                            />
+                        </div>
+
+                        {/* Row 2: Connection */}
+                        <div>
+                            <label className="text-xs text-gray-500 mb-1 block uppercase tracking-wider">Relation to You</label>
+                            <input 
+                                {...register(`witnesses.${i}.connection`)} 
+                                placeholder="e.g. Neighbor, Colleague, Brother" 
+                                className={getInputClass(`witnesses.${i}.connection`, errors.witnesses?.[i]?.connection)} 
+                            />
+                        </div>
+
+                        {/* Row 3: Knowledge */}
+                        <div>
+                            <label className="text-xs text-gray-500 mb-1 block uppercase tracking-wider">What do they know?</label>
+                            <textarea 
+                                {...register(`witnesses.${i}.knowledge`)} 
+                                placeholder="e.g. They saw the incident happen / They signed the contract as a witness" 
+                                rows={2} 
+                                className={getInputClass(`witnesses.${i}.knowledge`, errors.witnesses?.[i]?.knowledge)} 
+                            />
+                        </div>
+                     </div>
+                   ))}
+                   <button type="button" onClick={addWitness} className="flex items-center gap-2 text-green-400 hover:text-green-300 text-sm font-semibold">
+                     <Plus size={16}/> Add Witness
+                   </button>
+                </div>
+
+                {/* 3. Section 65B Certificate */}
+                <div className="p-5 bg-gray-800 border border-yellow-600/30 rounded-lg mt-6">
+                   <div className="flex items-center gap-2 mb-2">
+                      <FileText size={20} className="text-yellow-500"/>
+                      <label className="font-medium text-yellow-500">Section 65B Certificate (For Electronic Evidence)</label>
+                   </div>
+                   
+                   <div className="mb-4 text-sm text-gray-300 space-y-2">
+                       <p>Under the Indian Evidence Act, electronic records (WhatsApp chats, CCTV, Emails) are <strong>inadmissible</strong> without a certificate.</p>
+                       <ul className="list-disc pl-5 text-xs text-gray-400">
+                           <li>If you own the device (phone/laptop), you can self-certify.</li>
+                           <li>If it's from a 3rd party (Bank/Telecom), you must request it officially.</li>
+                       </ul>
+                   </div>
+                   
+                   <div className="flex flex-col md:flex-row gap-4 items-start">
+                        {/* Option A: Upload */}
+                        <div className="w-full md:w-1/2">
+                            <label className="text-xs text-gray-500 mb-1 block">Have the certificate? Upload PDF</label>
+                            <label className="flex items-center justify-center w-full p-3 border-2 border-dashed border-gray-600 rounded-lg cursor-pointer hover:border-yellow-500 hover:bg-gray-700 transition h-[50px]">
+                                <div className="flex items-center gap-2 text-sm text-gray-300">
+                                    <UploadCloud size={20} />
+                                    <span className="truncate max-w-[150px]">
+                                        {watch('certificateFile')?.[0]?.name || "Upload Certificate (PDF)"}
+                                    </span>
+                                </div>
+                                <input 
+                                    type="file" 
+                                    accept=".pdf,.doc,.docx,.jpg,.png"
+                                    className="hidden" 
+                                    onChange={handleCertFileChange}
+                                />
+                            </label>
+                        </div>
+
+                        {/* Option B: Text Input */}
+                        <div className="w-full md:w-1/2">
+                            <label className="text-xs text-gray-500 mb-1 block">Don't have it? Describe status.</label>
+                            <input 
+                                {...register('certificateStatus')} 
+                                placeholder="e.g. 'I own the phone used for chats' or 'Need to apply to bank'" 
+                                className={getInputClass('certificateStatus', false)} 
+                            />
+                        </div>
+                   </div>
+                </div>
+
+                <div className="flex gap-4 pt-4">
+                  <button type="button" onClick={() => setStep(2)} className="flex-1 bg-gray-600 hover:bg-gray-500 py-3 rounded-lg font-semibold">Back</button>
+                  <button type="submit" className="flex-1 bg-orange-600 hover:bg-orange-700 py-3 rounded-lg font-bold text-white shadow-lg shadow-orange-900/20">Submit & Analyze Case</button>
                 </div>
               </div>
+            )}
 
-              {/* --- Action Buttons (UPDATED BUTTON TEXT) --- */}
-              <div className="flex flex-col md:flex-row gap-4 mt-8 border-t border-gray-700 pt-6">
-                <button type="button" onClick={() => { 
-                  methods.reset(); 
-                  setStep(1); 
-                  setWitnesses([]); 
-                  setEvidence([]); 
-                  setResult(''); 
-                  setIsLoading(false); 
-                  setActiveCitations([]);
-                  setDisplaySuitValue(''); // Reset formatted value
-                }} className="flex-1 bg-gray-600 text-white py-3 px-6 rounded-lg hover:bg-gray-700 transition font-semibold" title="Reset and start a new case analysis">
-                  Start New Analysis
-                </button>
-                
-                <button 
-                  onClick={handleExportPDF}
-                  disabled={!result || isLoading}
-                  className="flex-1 bg-green-600 text-white py-3 px-6 rounded-lg hover:bg-green-700 transition font-semibold flex items-center justify-center gap-2 disabled:opacity-50" title="Export analysis as PDF report"
-                >
-                  <Download size={18} />
-                  Download Your Rights Report (PDF)
-                </button>
+            {/* STEP 4: Result */}
+            {step === 4 && (
+              <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
+                 <h3 className="text-2xl font-bold mb-4 text-white">Advocat Analysis</h3>
+                 <div className="flex flex-col md:flex-row gap-6">
+                    <div className="flex-1 case-result-prose">
+                       {isLoading ? <ChatSkeleton /> : <ReactMarkdown>{result}</ReactMarkdown>}
+                    </div>
+                    {/* Sidebar for Citations - WHITE BG for Contrast */}
+                    <div className="w-full md:w-72 bg-white p-4 rounded-lg h-fit shadow-lg text-gray-900">
+                       <h4 className="font-bold border-b border-gray-300 pb-2 mb-3 text-lg text-gray-800">Relevant Law</h4>
+                       {activeCitations.length === 0 && !isLoading && <p className="text-sm text-gray-500 italic">No specific acts cited.</p>}
+                       <ul className="space-y-3 text-sm custom-scrollbar max-h-[400px] overflow-y-auto">
+                         {activeCitations.map((c, i) => (
+                           <li key={i} className="pb-2 border-b border-gray-100 last:border-0">
+                             {c.type === 'link' ? 
+                                <a href={c.href} target="_blank" rel="noreferrer" className="flex items-start gap-2 text-blue-600 hover:text-blue-800 hover:underline font-medium">
+                                    <LinkIcon size={14} className="mt-1 flex-shrink-0"/> <span>{c.title}</span>
+                                </a> 
+                                : 
+                                <div className="flex items-start gap-2 text-gray-800">
+                                    <Scale size={16} className="mt-0.5 flex-shrink-0 text-purple-600"/> 
+                                    <span className="font-medium">{c.title}</span>
+                                </div>
+                             }
+                           </li>
+                         ))}
+                       </ul>
+                    </div>
+                 </div>
+                 <div className="mt-8 pt-6 border-t border-gray-700 flex gap-4">
+                    <button onClick={() => {setStep(1); methods.reset(); setWitnesses([]); setEvidence([]);}} className="bg-gray-700 hover:bg-gray-600 text-white py-2 px-6 rounded font-semibold">Start New Analysis</button>
+                    
+                    {/* FIX: Use handleExportPDF which uses the already fetched 'result' string, preventing re-submission */}
+                    <button onClick={handleExportPDF} disabled={!result} className="bg-green-600 hover:bg-green-700 text-white py-2 px-6 rounded font-bold flex items-center gap-2 disabled:opacity-50"><Download size={18}/> Download PDF</button>
+                 </div>
               </div>
-            </div>
-          )}
-        </form>
+            )}
+
+          </form>
         </div>
       </div>
     </>
