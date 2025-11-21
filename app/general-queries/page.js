@@ -3,81 +3,61 @@ import React, { useState, useEffect, useRef } from 'react';
 import { toast } from 'react-hot-toast';
 import ReactMarkdown from 'react-markdown';
 import { 
-  MoreVertical, Pencil, Pin, Trash2, X, Save, Ban, Menu, 
-  PanelRightClose, PanelRightOpen, Link, BookCopy, Download, 
-  AlertCircle, ArrowRight, User 
+  MoreVertical, Pencil, Trash2, X, Menu, 
+  PanelRightClose, PanelRightOpen, Link as LinkIcon, 
+  BookCopy, Send, Zap, FileText, User, Sparkles, Pin, Info
 } from 'lucide-react';
 import { ChatSkeleton } from '@/app/components/SkeletonLoader';
 import { useAuth } from '@/hooks/useAuth';
 
-// --- Font Helper ---
+// --- Styles & Animations ---
 const FontLoader = () => (
   <style>{`
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700&family=Inter:wght@400;500;600&display=swap');
     
-    /* Custom styles for the new "document" view */
-    .font-serif {
-      font-family: 'Noto Serif', serif;
-    }
+    .font-serif { font-family: 'Merriweather', serif; }
+    .font-sans { font-family: 'Inter', sans-serif; }
 
-    /* --- FIX IS HERE: ADD color: #111; --- */
-    .prose-document h1, .prose-document h2, .prose-document h3 {
-      font-family: 'Inter', sans-serif; 
+    .prose-legal h1, .prose-legal h2, .prose-legal h3 {
+      color: #171717; font-family: 'Inter', sans-serif; font-weight: 700; margin-top: 1.2em; margin-bottom: 0.5em;
+    }
+    .prose-legal p, .prose-legal li {
+      font-family: 'Merriweather', serif; font-size: 1rem; line-height: 1.8; color: #334155;
+    }
+    .prose-legal strong { color: #000; font-weight: 700; }
+    
+    /* LINK STYLING: Bright Orange, Underlined, Pointer Cursor */
+    .prose-legal a { 
+      color: #FF5B33 !important; 
+      text-decoration: underline; 
+      text-underline-offset: 3px; 
       font-weight: 600;
-      color: #111;  /* <--- ADD THIS LINE (Forces headings to be black) */
-      margin-top: 1.5em; /* Optional: Adds nice spacing before headings */
-      margin-bottom: 0.5em;
+      cursor: pointer;
     }
-    
-    .prose-document p, .prose-document li, .prose-document a {
-      font-family: 'Noto Serif', serif; 
-      font-size: 1.05rem;
-      line-height: 1.7;
-      color: #333;
+    .prose-legal a:hover {
+      color: #e04f2a !important;
     }
 
-    .prose-document a {
-      color: #2563eb;
+    @keyframes floatUp {
+      0% { opacity: 1; transform: translateY(0); }
+      100% { opacity: 0; transform: translateY(-20px); }
     }
-
-    .prose-document strong {
-      font-weight: 700;
-      color: #000; /* Optional: Ensures bold text is strictly black */
-    }
+    .animate-float { animation: floatUp 1.5s ease-out forwards; }
   `}</style>
 );
 
-const MarkdownLink = ({ children, href }) => (
-  <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">
-    {children}
-  </a>
-);
-
-const getCaseTitle = (messages) => {
-  if (messages.length === 0) return "New Case";
-  const firstUserMessage = messages.find(m => m.role === 'user');
-  return firstUserMessage ? firstUserMessage.text.substring(0, 30) + '...' : "Case";
-};
-
-const parseCitations = (text) => {
-  const citations = [];
-  const linkRegex = /(https?:\/\/[^\s\)]+)/g;
-  let match;
-  while ((match = linkRegex.exec(text)) !== null) {
-    const precedingText = text.substring(Math.max(0, match.index - 10), match.index);
-    if (!precedingText.endsWith('](')) { 
-      citations.push({ type: 'link', title: match[1], href: match[1] });
-    }
-  }
-  const markdownLinkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g;
-  while ((match = markdownLinkRegex.exec(text)) !== null) {
-    citations.push({ type: 'link', title: match[1], href: match[2] });
-  }
-  const actRegex = /(The\s+[A-Z][a-z]+(\s+[A-Z][a-z]+)*\s+Act,\s+\d{4})/g;
-  while ((match = actRegex.exec(text)) !== null) {
-    citations.push({ type: 'act', title: match[1], href: null });
-  }
-  return citations;
+// --- Custom Link Renderer to ensure clickable links ---
+const MarkdownComponents = {
+  a: ({ node, ...props }) => (
+    <a 
+      {...props} 
+      target="_blank" 
+      rel="noopener noreferrer" 
+      className="text-[#FF5B33] font-bold hover:underline"
+    >
+      {props.children}
+    </a>
+  )
 };
 
 export default function GeneralQueries() {
@@ -88,46 +68,36 @@ export default function GeneralQueries() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [mode, setMode] = useState('quick');
-  const [savedTokens, setSavedTokens] = useState(0); 
-  const [animateCounter, setAnimateCounter] = useState(false);
-  const [showAdvisorNudge, setShowAdvisorNudge] = useState(false);
+  const [mode, setMode] = useState('quick'); 
   
-  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, caseId: null });
-  const [showDeleteModal, setShowDeleteModal] = useState(null);
-  const [renamingCaseId, setRenamingCaseId] = useState(null);
-  const [newCaseName, setNewCaseName] = useState("");
+  const [savedCredits, setSavedCredits] = useState(0); 
+  const [creditPop, setCreditPop] = useState(null); 
+  
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isReferencesOpen, setIsReferencesOpen] = useState(true);
-  const [activeReferences, setActiveReferences] = useState([]); 
+  const [activeReferences, setActiveReferences] = useState([]);
+  
+  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, caseId: null });
+  const [renamingCaseId, setRenamingCaseId] = useState(null);
+  const [newCaseName, setNewCaseName] = useState("");
+  const contextMenuRef = useRef(null);
 
   const messagesEndRef = useRef(null);
-  const contextMenuRef = useRef(null);
   const textareaRef = useRef(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+  useEffect(() => { scrollToBottom(); }, [messages, isLoading]);
 
-  useEffect(() => { scrollToBottom(); }, [messages]);
-
-  // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`; // Cap at 150px
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
     }
   }, [input]);
 
-  useEffect(() => {
-    if (messages.length > 0) {
-      const lastUserMessage = messages.findLast(m => m.role === 'user')?.text?.toLowerCase() || '';
-      if (lastUserMessage.includes('evidence') || lastUserMessage.includes('dispute') || lastUserMessage.includes('stuck')) {
-        setShowAdvisorNudge(true);
-      }
-    }
-  }, [messages]);
-
+  // Load Cases
   useEffect(() => {
     const loadCases = async () => {
       if (userEmail) {
@@ -140,6 +110,8 @@ export default function GeneralQueries() {
             const data = await res.json();
             if (data.cases && Object.keys(data.cases).length > 0) {
               setCaseFiles(data.cases);
+              
+              // Default to last active or first case
               const lastActiveId = localStorage.getItem('advocat_lastActiveCase');
               if (lastActiveId && data.cases[lastActiveId]) {
                 setActiveCaseId(lastActiveId);
@@ -158,6 +130,21 @@ export default function GeneralQueries() {
     loadCases();
   }, [userEmail]);
 
+  // Sync Active Case Data (FIXED CREDIT SYNC)
+  useEffect(() => {
+    if (activeCaseId && caseFiles[activeCaseId]) {
+      const activeCase = caseFiles[activeCaseId];
+      setMessages(activeCase.messages);
+      
+      // FIX: Set credits ONLY for this specific case
+      setSavedCredits(activeCase.tokensSaved || 0); 
+      
+      setActiveReferences(activeCase.references || []); 
+      localStorage.setItem('advocat_lastActiveCase', activeCaseId);
+    }
+  }, [activeCaseId, caseFiles]);
+
+  // Save to DB
   useEffect(() => {
     if (userEmail && Object.keys(caseFiles).length > 0) {
       fetch('/api/cases/save', {
@@ -168,140 +155,63 @@ export default function GeneralQueries() {
   }, [caseFiles, userEmail]);
 
   useEffect(() => {
-    if (activeCaseId && caseFiles[activeCaseId]) {
-      const activeCase = caseFiles[activeCaseId];
-      setMessages(activeCase.messages);
-      setSavedTokens(activeCase.tokensSaved); 
-      setActiveReferences(activeCase.references || []); 
-      localStorage.setItem('advocat_lastActiveCase', activeCaseId);
-    } else {
-      setMessages([]);
-      setSavedTokens(0);
-      setActiveReferences([]);
-    }
-  }, [activeCaseId, caseFiles]);
-
-  useEffect(() => {
     const handleClickOutside = (event) => {
-      if (event.target.closest('.js-context-menu-trigger')) return;
       if (contextMenu.visible && contextMenuRef.current && !contextMenuRef.current.contains(event.target)) {
-        closeContextMenu();
+        setContextMenu({ ...contextMenu, visible: false });
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [contextMenu.visible]);
-
+  }, [contextMenu]);
 
   const handleCreateNewCase = (currentCases = caseFiles) => {
     const newCaseId = `case-${Date.now()}`;
     const newCase = {
-      title: `Case - ${new Date().toLocaleDateString()}`,
+      title: "New Consultation",
       messages: [],
-      tokensSaved: 0,
+      tokensSaved: 0, // Start at 0
       references: [] 
     };
     const updatedCaseFiles = { ...currentCases, [newCaseId]: newCase };
     setCaseFiles(updatedCaseFiles);
-    setActiveCaseId(newCaseId); 
-  };
-
-  const handleSelectCase = (caseId) => {
-    if (caseId === renamingCaseId) return; 
-    setActiveCaseId(caseId);
+    setActiveCaseId(newCaseId);
+    // State updates will handle resetting credits to 0 automatically via useEffect
+    if (window.innerWidth < 768) setIsSidebarOpen(false);
   };
 
   const handleContextMenu = (e, caseId) => {
     e.preventDefault();
     e.stopPropagation();
-    const container = e.currentTarget.closest('#advocat-app-container');
-    if (!container) return;
-    const containerRect = container.getBoundingClientRect();
-    const buttonRect = e.currentTarget.getBoundingClientRect();
-    const x = (buttonRect.right - containerRect.left) - 144; 
-    const y = (buttonRect.bottom - containerRect.top) + 5;
-    if (contextMenu.visible && contextMenu.caseId === caseId) {
-      closeContextMenu();
-    } else {
-      setContextMenu({ visible: true, x, y, caseId });
-    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    setContextMenu({ visible: true, x: rect.right, y: rect.top, caseId });
   };
 
-  const closeContextMenu = () => setContextMenu({ ...contextMenu, visible: false, caseId: null });
-
-  const handleStartRename = () => {
+  const handleRenameStart = () => {
     setRenamingCaseId(contextMenu.caseId);
     setNewCaseName(caseFiles[contextMenu.caseId].title);
-    closeContextMenu();
+    setContextMenu({ ...contextMenu, visible: false });
   };
 
   const handleRenameSubmit = (e) => {
-    e.preventDefault(); 
-    const caseId = renamingCaseId;
-    if (!caseId || !newCaseName.trim()) {
-      handleCancelRename();
-      return;
+    e.preventDefault();
+    if (renamingCaseId && newCaseName.trim()) {
+        const updated = { ...caseFiles, [renamingCaseId]: { ...caseFiles[renamingCaseId], title: newCaseName } };
+        setCaseFiles(updated);
     }
-    const updatedCaseFiles = { ...caseFiles, [caseId]: { ...caseFiles[caseId], title: newCaseName.trim() } };
-    setCaseFiles(updatedCaseFiles);
     setRenamingCaseId(null);
-    setNewCaseName("");
-    toast.success("Case renamed!");
   };
 
-  const handleCancelRename = () => {
-    setRenamingCaseId(null);
-    setNewCaseName("");
-  };
-
-  const handlePinCase = () => {
-    toast.success("Pin feature coming soon!");
-    closeContextMenu();
-  };
-
-  const handleShowDeleteModal = () => {
-    setShowDeleteModal(contextMenu.caseId);
-    closeContextMenu();
-  };
-
-  const handleHideDeleteModal = () => setShowDeleteModal(null);
-
-  const handleConfirmDelete = () => {
-    const caseId = showDeleteModal;
-    if (!caseId) return;
-    const updatedCaseFiles = { ...caseFiles };
-    delete updatedCaseFiles[caseId];
-    setCaseFiles(updatedCaseFiles);
-    if (activeCaseId === caseId) {
-      const remainingIds = Object.keys(updatedCaseFiles);
-      setActiveCaseId(remainingIds.length > 0 ? remainingIds[0] : null);
-      if (remainingIds.length === 0) handleCreateNewCase(updatedCaseFiles);
+  const handleDeleteCase = () => {
+    const updated = { ...caseFiles };
+    delete updated[contextMenu.caseId];
+    setCaseFiles(updated);
+    setContextMenu({ ...contextMenu, visible: false });
+    if (activeCaseId === contextMenu.caseId) {
+        const keys = Object.keys(updated);
+        if (keys.length > 0) setActiveCaseId(keys[0]);
+        else handleCreateNewCase(updated);
     }
-    toast.success('Case deleted.');
-    handleHideDeleteModal();
-  };
-
-  const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
-  const toggleReferences = () => setIsReferencesOpen(!isReferencesOpen);
-
-  const handleExportCase = () => {
-    if (!activeCaseId || !caseFiles[activeCaseId]) {
-      toast.error("No active case to export.");
-      return;
-    }
-    const activeCase = caseFiles[activeCaseId];
-    let exportContent = `Case Title: ${activeCase.title}\n\n`;
-    activeCase.messages.forEach(msg => {
-      exportContent += `${msg.role === 'user' ? 'My Query' : "Advocat's Response"}:\n${msg.text}\n\n----------------\n\n`;
-    });
-    const blob = new Blob([exportContent], { type: 'text/plain;charset=utf-8' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `${activeCase.title.replace(/[^a-z0-9]/gi, '_')}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success("Case exported!");
+    toast.success("Consultation deleted");
   };
 
   const handleSubmit = async (e) => {
@@ -310,9 +220,11 @@ export default function GeneralQueries() {
 
     const userMessage = { role: 'user', text: input };
     const newMessages = [...messages, userMessage];
-    setMessages(newMessages); 
+    setMessages(newMessages);
     setInput('');
     setIsLoading(true);
+    
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
     try {
       const res = await fetch('/api/auth/chat', {
@@ -324,52 +236,56 @@ export default function GeneralQueries() {
       
       if (res.ok) {
         const ourAppCost = data.tokensUsed || 0;
-        const actualSaved = Math.round(ourAppCost * (mode === 'deep' ? 1.5 : 0.5)); 
+        const actualSaved = Math.round(ourAppCost * (mode === 'deep' ? 1.5 : 0.5));
+        
+        setCreditPop(actualSaved);
+        
+        // Calculate new total for THIS case only
+        const currentTotal = caseFiles[activeCaseId].tokensSaved || 0;
+        const newTotalCredits = currentTotal + actualSaved;
+        
+        setSavedCredits(newTotalCredits); // Update UI immediately
+        setTimeout(() => setCreditPop(null), 2000);
 
         const aiMessage = { 
-          role: 'model', 
-          text: data.text,
-          used: ourAppCost,
-          saved: actualSaved
+            role: 'model', 
+            text: data.text,
+            credits: actualSaved 
         };
         const finalMessages = [...newMessages, aiMessage];
-        const newTitle = messages.length === 0 ? getCaseTitle(finalMessages) : caseFiles[activeCaseId].title;
         
-        let allCitations = activeReferences;
-        if (mode === 'deep') {
-          const newCitations = parseCitations(aiMessage.text);
-          const uniqueNew = newCitations.filter(nc => !activeReferences.some(ac => ac.title === nc.title));
-          if (uniqueNew.length > 0) {
-             allCitations = [...activeReferences, ...uniqueNew];
-             setActiveReferences(allCitations);
-          }
+        let newTitle = caseFiles[activeCaseId].title;
+        if (messages.length === 0) {
+           newTitle = input.substring(0, 25) + (input.length > 25 ? '...' : '');
         }
 
-        const updatedCaseFiles = {
-          ...caseFiles,
-          [activeCaseId]: {
+        let allCitations = activeReferences;
+        if (mode === 'deep') {
+           const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g;
+           let match;
+           while ((match = linkRegex.exec(data.text)) !== null) {
+             if (!allCitations.some(c => c.href === match[2])) {
+               allCitations = [...allCitations, { type: 'link', title: match[1], href: match[2] }];
+             }
+           }
+        }
+
+        const updatedCase = {
             ...caseFiles[activeCaseId],
             title: newTitle,
             messages: finalMessages,
-            tokensSaved: (caseFiles[activeCaseId].tokensSaved || 0) + actualSaved,
+            tokensSaved: newTotalCredits, // Save specific case credits
             references: allCitations
-          }
         };
-        setCaseFiles(updatedCaseFiles); 
-        setSavedTokens(updatedCaseFiles[activeCaseId].tokensSaved);
-        setAnimateCounter(true);
-        setTimeout(() => setAnimateCounter(false), 1500);
-        toast.success("Response received!");
+
+        setCaseFiles({ ...caseFiles, [activeCaseId]: updatedCase });
       } else {
-        throw new Error(data.message);
+        toast.error(data.message || "Failed to get response");
       }
     } catch (err) {
-      const errorMessage = { role: 'model', text: "Sorry, connection error. Please try again.", used: 0, saved: 0 };
-      setMessages([...newMessages, errorMessage]);
-      toast.error("API Error");
+      toast.error("Network error. Please try again.");
     }
     setIsLoading(false);
-    setTimeout(scrollToBottom, 100);
   };
 
   const handleKeyDown = (e) => {
@@ -379,142 +295,282 @@ export default function GeneralQueries() {
     }
   };
 
+  const ModeToggle = () => (
+    <div className="flex bg-slate-100 p-1 rounded-lg self-start md:self-auto">
+        <button 
+            onClick={() => setMode('quick')}
+            className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-2 transition-all ${mode === 'quick' ? 'bg-white text-[#FF5B33] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+            <Zap size={14} /> Quick
+        </button>
+        <button 
+            onClick={() => setMode('deep')}
+            className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-2 transition-all ${mode === 'deep' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+            <FileText size={14} /> Deep
+        </button>
+    </div>
+  );
+
   if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   if (!isLoggedIn) return null;
 
   return (
     <>
       <FontLoader />
-
-      {/* App Container: Fits remaining height of screen minus the header (approx 64px).
-        The global footer is hidden via CSS injection above.
-      */}
-      <div id="advocat-app-container" className="h-[calc(100vh-64px)] flex bg-gray-100 relative overflow-hidden">
+      <div className="h-[calc(100vh-64px)] flex bg-[#F8FAFC] relative overflow-hidden font-sans text-slate-900">
         
         {/* Sidebar */}
-        <div className={`w-64 bg-white shadow-md flex flex-col flex-shrink-0 transition-all duration-300 ease-in-out z-20 ${isSidebarOpen ? 'ml-0' : '-ml-64'}`}>
-          <div className="p-4 border-b">
-            <button onClick={() => handleCreateNewCase()} className="w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 font-semibold">Open a New Case</button>
+        <div className={`
+            absolute inset-y-0 left-0 z-20 bg-white border-r border-slate-200 transition-all duration-300 ease-in-out overflow-hidden
+            ${isSidebarOpen ? 'w-72 translate-x-0' : 'w-0 -translate-x-full opacity-0'}
+            md:relative md:opacity-100
+            ${!isSidebarOpen && 'md:w-0 md:border-none'} 
+        `}>
+          <div className="p-4 border-b border-slate-100 flex justify-between items-center min-w-[288px]">
+             <h2 className="font-bold text-slate-700">My Consultations</h2>
+             <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-slate-400"><X size={20}/></button>
           </div>
-          <div className="flex-1 overflow-y-auto p-2 space-y-2">
+          <div className="p-4 min-w-[288px]">
+            <button onClick={() => handleCreateNewCase()} className="w-full bg-[#171717] text-white py-3 px-4 rounded-lg hover:bg-black transition font-semibold flex items-center justify-center gap-2 shadow-md shadow-slate-900/10">
+                <Pencil size={16} /> New Consultation
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 space-y-1 min-w-[288px]">
              {Object.entries(caseFiles).sort((a, b) => b[0].localeCompare(a[0])).map(([caseId, caseData]) => (
-                <div key={caseId} className="group relative rounded-md">
-                  {renamingCaseId === caseId ? (
-                    <form onSubmit={handleRenameSubmit} className="p-2 bg-gray-100 rounded-md">
-                      <input autoFocus value={newCaseName} onChange={(e) => setNewCaseName(e.target.value)} className="w-full text-sm p-2 border rounded-md" onBlur={handleCancelRename} />
-                    </form>
-                  ) : (
-                    <div className="flex justify-between items-center w-full">
-                      <button onClick={() => handleSelectCase(caseId)} className={`flex-1 text-left p-3 rounded-md w-full truncate ${activeCaseId === caseId ? 'bg-blue-100 text-blue-800' : 'hover:bg-gray-100'}`}>
-                        <p className="font-medium text-sm truncate">{caseData.title}</p>
-                        <p className="text-xs text-orange-600">{caseData.tokensSaved} tokens saved</p>
-                      </button>
-                      <button onClick={(e) => handleContextMenu(e, caseId)} className="absolute right-0 px-2 opacity-0 group-hover:opacity-100 js-context-menu-trigger"><MoreVertical size={18} /></button>
-                    </div>
-                  )}
+                <div key={caseId} className="group relative">
+                    {renamingCaseId === caseId ? (
+                        <form onSubmit={handleRenameSubmit} className="p-2">
+                            <input 
+                                autoFocus
+                                className="w-full p-2 text-sm border border-blue-300 rounded" 
+                                value={newCaseName} 
+                                onChange={e => setNewCaseName(e.target.value)}
+                                onBlur={() => setRenamingCaseId(null)}
+                            />
+                        </form>
+                    ) : (
+                        <button 
+                            onClick={() => setActiveCaseId(caseId)}
+                            className={`w-full text-left p-3 rounded-lg transition-colors pr-8 relative ${activeCaseId === caseId ? 'bg-orange-50 text-orange-900 border border-orange-100' : 'hover:bg-slate-50 text-slate-600'}`}
+                        >
+                            <p className="font-medium text-sm truncate">{caseData.title}</p>
+                            <p className="text-xs text-slate-400 mt-1">{new Date(parseInt(caseId.split('-')[1])).toLocaleDateString()}</p>
+                            <div 
+                                onClick={(e) => handleContextMenu(e, caseId)}
+                                className="absolute right-2 top-3 p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                                <MoreVertical size={16} />
+                            </div>
+                        </button>
+                    )}
                 </div>
              ))}
           </div>
         </div>
 
-        {/* Main Chat Area */}
-        <div className="flex-1 flex flex-col h-full">
-          {/* Header - Title Fixed to be BLACK and Visible */}
-          <header className="bg-white shadow-sm p-4 flex items-center border-b flex-shrink-0 z-10">
-            <button onClick={toggleSidebar} className="mr-4"><Menu size={24} /></button>
-            <h1 className="text-2xl font-extrabold text-black truncate max-w-lg">{caseFiles[activeCaseId]?.title || 'General Queries'}</h1>
-            <div className="flex-grow"></div>
-            <div className={`bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-sm font-bold flex-shrink-0 ${animateCounter ? 'animate-bounce' : ''}`}>Case Tokens: {savedTokens} 🧡</div>
-            <button onClick={handleExportCase} className="ml-4"><Download size={24} /></button>
-            {mode === 'deep' && <button onClick={toggleReferences} className="ml-4">{isReferencesOpen ? <PanelRightClose size={24}/> : <PanelRightOpen size={24}/>}</button>}
+        {contextMenu.visible && (
+            <div 
+                ref={contextMenuRef}
+                className="fixed z-50 bg-white border border-slate-200 shadow-xl rounded-lg py-1 w-32"
+                style={{ top: contextMenu.y, left: contextMenu.x }}
+            >
+                <button onClick={() => toast.success("Pinned (Demo)")} className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50 flex items-center gap-2"><Pin size={14}/> Pin</button>
+                <button onClick={handleRenameStart} className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50 flex items-center gap-2"><Pencil size={14}/> Rename</button>
+                <button onClick={handleDeleteCase} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"><Trash2 size={14}/> Delete</button>
+            </div>
+        )}
+
+        {/* Main Area */}
+        <div className="flex-1 flex flex-col h-full relative w-full transition-all duration-300">
+          
+          {/* Header */}
+          <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0 z-10">
+            <div className="flex items-center gap-4">
+                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-slate-500 hover:text-[#171717] p-1 rounded-md hover:bg-slate-100 transition">
+                    <Menu size={24} />
+                </button>
+                <div>
+                    <h1 className="text-lg font-bold text-slate-900 truncate max-w-[150px] md:max-w-sm">
+                        {caseFiles[activeCaseId]?.title || 'New Consultation'}
+                    </h1>
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <span className={`w-2 h-2 rounded-full ${activeCaseId ? 'bg-green-500' : 'bg-slate-300'}`}></span>
+                        {activeCaseId ? 'Active Session' : 'Ready'}
+                    </div>
+                </div>
+            </div>
+            
+            <div className="flex items-center gap-3 md:gap-4">
+                <div className="group relative hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 text-orange-700 rounded-full border border-orange-100 text-xs font-bold cursor-help">
+                    <Sparkles size={14} className="text-[#FF5B33] fill-[#FF5B33]" />
+                    <span>{savedCredits} Credits Saved</span>
+                    <Info size={14} className="ml-1 text-orange-300 group-hover:text-orange-600 transition-colors" />
+                    
+                    <div className="absolute top-full right-0 mt-2 w-72 p-4 bg-white shadow-2xl border border-slate-200 rounded-xl text-left invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-all duration-200 z-50">
+                        <h4 className="font-bold text-slate-900 mb-2 flex items-center gap-2">
+                            <Sparkles size={14} className="text-[#FF5B33]"/> How Credits Work
+                        </h4>
+                        <p className="text-slate-600 text-[11px] leading-relaxed mb-3">
+                            We calculate "Effort Saved" based on the complexity of your query.
+                        </p>
+                        <ul className="space-y-2 text-[11px]">
+                            <li className="flex items-start gap-2">
+                                <span className="bg-orange-100 text-orange-700 px-1.5 rounded font-bold">Vague</span>
+                                <span className="text-slate-600">High Credits (1.5x - 3.0x). AI bridges the gaps.</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                                <span className="bg-green-100 text-green-700 px-1.5 rounded font-bold">Specific</span>
+                                <span className="text-slate-600">Lower Credits. You provided the context.</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    {creditPop && (
+                        <div className="absolute -top-6 right-0 text-[#FF5B33] font-bold text-sm animate-float">
+                            +{creditPop}
+                        </div>
+                    )}
+                </div>
+
+                <div className="hidden md:block border-l border-slate-200 h-6 mx-2"></div>
+                <ModeToggle />
+                {mode === 'deep' && (
+                    <button onClick={() => setIsReferencesOpen(!isReferencesOpen)} className="text-slate-400 hover:text-[#FF5B33] transition ml-2">
+                        {isReferencesOpen ? <PanelRightClose size={24}/> : <PanelRightOpen size={24}/>}
+                    </button>
+                )}
+            </div>
           </header>
 
-          {/* Chat Messages - Takes all available space */}
-          <div className="flex-1 overflow-y-auto p-4 md:p-8">
-             <div className="max-w-4xl mx-auto pb-4">
-                {messages.length === 0 && <p className="text-center text-gray-500 italic mt-10">Start a new case consultation...</p>}
-                {messages.map((msg, i) => (
-                   <div key={i} className="mb-8">
-                      {msg.role === 'user' ? (
-                        <div className="bg-gray-50 border border-gray-200 p-4 rounded-lg shadow-sm">
-                           <div className="flex items-center gap-3 mb-2">
-                             <span className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center"><User size={18} /></span>
-                             <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide">My Query</h3>
-                           </div>
-                           <p className="text-gray-800 text-lg pl-11 whitespace-pre-wrap">{msg.text}</p>
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth">
+             <div className="max-w-5xl mx-auto space-y-8 pb-4">
+                {messages.length === 0 && (
+                    <div className="text-center py-20 px-4">
+                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <div className="text-3xl">⚖️</div>
                         </div>
-                      ) : (
-                        <div className="bg-white p-6 md:p-8 rounded-lg shadow-lg">
-                           <div className="flex items-center gap-3 mb-4">
-                             <span className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center"><BookCopy size={18} /></span>
-                             <h3 className="text-sm font-semibold text-blue-700 uppercase tracking-wide">Advocat's Analysis</h3>
-                           </div>
-                           <div className="prose-document max-w-none pl-11"><ReactMarkdown components={{ a: MarkdownLink }}>{msg.text}</ReactMarkdown></div>
-                           {msg.saved > 0 && <p className="text-xs text-orange-600 mt-6 p-2 bg-orange-50 rounded font-sans font-medium pl-11">Used {msg.used} tokens | Saved {msg.saved} vs. raw chat 🧡</p>}
+                        <h3 className="text-xl font-bold text-slate-900 mb-2">How can I help you today?</h3>
+                        <p className="text-slate-500 max-w-md mx-auto">
+                            Ask about your rights, specific acts, or describe a situation. 
+                            Use <span className="font-bold text-[#FF5B33]">Quick</span> for summaries and <span className="font-bold text-blue-600">Deep</span> for detailed legal strategy.
+                        </p>
+                    </div>
+                )}
+
+                {messages.map((msg, i) => (
+                   <div key={i} className={`
+                        w-full rounded-2xl p-6 shadow-sm relative mb-6 flex
+                        ${msg.role === 'user' 
+                            ? 'bg-[#FF5B33] text-white border border-[#FF5B33] justify-between' 
+                            : 'bg-white border border-slate-200 gap-4'
+                        }
+                   `}>
+                      
+                      {msg.role === 'model' && (
+                        <div className="w-8 h-8 rounded-full bg-[#171717] flex items-center justify-center text-white shrink-0 mt-1">
+                            <BookCopy size={14} />
+                        </div>
+                      )}
+
+                      <div className="flex-1 min-w-0">
+                         {msg.role === 'model' ? (
+                            <>
+                                <div className="prose-legal">
+                                    {/* Use custom components for Markdown */}
+                                    <ReactMarkdown components={MarkdownComponents}>{msg.text}</ReactMarkdown>
+                                </div>
+                                {msg.credits > 0 && (
+                                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-2 text-xs font-semibold text-orange-600">
+                                        <Zap size={12} className="fill-orange-600"/>
+                                        {msg.credits} credits saved with this answer
+                                    </div>
+                                )}
+                            </>
+                         ) : (
+                            <p className="text-[15px] leading-relaxed whitespace-pre-wrap font-medium">{msg.text}</p>
+                         )}
+                      </div>
+
+                      {msg.role === 'user' && (
+                        <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white shrink-0 mt-1 ml-4">
+                            <User size={16} />
                         </div>
                       )}
                    </div>
                 ))}
-                {isLoading && <div className="bg-white p-6 rounded-lg shadow-lg"><ChatSkeleton /></div>}
-                {showAdvisorNudge && (
-                  <div className="bg-blue-900/20 border border-blue-500/30 p-4 mb-6 rounded-lg flex items-center gap-3">
-                    <AlertCircle size={20} className="text-blue-400 flex-shrink-0"/> 
-                    <div className="flex-1">
-                      <p className="text-sm text-blue-300 mb-1">This sounds like a detailed scenario—want a structured plan?</p>
-                      <a href="/case-advisor" className="text-blue-400 hover:text-blue-300 font-medium inline-flex items-center gap-1">Jump to Case Advisor <ArrowRight size={14}/></a>
+                
+                {isLoading && (
+                    <div className="w-full bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex gap-4">
+                        <div className="w-8 h-8 rounded-full bg-[#171717] flex items-center justify-center text-white shrink-0 mt-1">
+                            <BookCopy size={14} />
+                        </div>
+                        <div className="flex-1">
+                            <ChatSkeleton />
+                        </div>
                     </div>
-                    <button onClick={() => setShowAdvisorNudge(false)} className="text-gray-500 hover:text-gray-400 ml-2"><X size={16}/></button>
-                  </div>
                 )}
                 <div ref={messagesEndRef} />
              </div>
           </div>
 
-          {/* Input Area - Fixed at bottom, auto-growing */}
-          <form onSubmit={handleSubmit} className="p-4 bg-white shadow-[0_-5px_15px_rgba(0,0,0,0.05)] border-t flex-shrink-0 z-20 relative">
-            <div className="flex gap-2 w-full mb-2 max-w-4xl mx-auto">
-               <button type="button" onClick={() => setMode('quick')} className={`flex-1 py-2 px-4 rounded-md border text-sm font-medium transition ${mode === 'quick' ? 'bg-green-50 border-green-500 text-green-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}>⚡ Quick (Rights Skim)</button>
-               <button type="button" onClick={() => setMode('deep')} className={`flex-1 py-2 px-4 rounded-md border text-sm font-medium transition ${mode === 'deep' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}>🔍 Deep (Cited Steps)</button>
+          {/* Input */}
+          <div className="bg-white border-t border-slate-200 p-4 md:p-6 relative z-20">
+            <div className="max-w-5xl mx-auto">
+                <form onSubmit={handleSubmit} className="relative flex items-end gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 focus-within:border-[#FF5B33] focus-within:ring-4 focus-within:ring-orange-500/10 transition-all shadow-inner">
+                    <textarea
+                        ref={textareaRef}
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder={mode === 'deep' ? "Describe the full situation in detail for a better legal strategy..." : "Ask a legal question..."}
+                        className="flex-1 bg-transparent border-none focus:ring-0 resize-none p-3 max-h-32 min-h-[24px] text-slate-800 placeholder:text-slate-400"
+                        rows={1}
+                        disabled={isLoading || !activeCaseId}
+                    />
+                    <button
+                        type="submit"
+                        disabled={isLoading || !input.trim()}
+                        className="p-3 bg-[#171717] text-white rounded-lg hover:bg-black transition disabled:opacity-50 disabled:cursor-not-allowed mb-[1px]"
+                    >
+                        <Send size={18} />
+                    </button>
+                </form>
+                <p className="text-center text-xs text-slate-400 mt-3">
+                    Advocat can make mistakes. Please verify legal citations independently.
+                </p>
             </div>
-            
-            <div className="flex gap-2 max-w-4xl mx-auto items-end">
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Ask a legal question..."
-                className="flex-1 p-3 border rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none no-scrollbar bg-white shadow-sm min-h-[50px] max-h-[200px]"
-                rows={1}
-                disabled={isLoading || !activeCaseId}
-              />
-              <button
-                type="submit"
-                className="bg-blue-500 text-white py-3 px-6 rounded-lg hover:bg-blue-600 transition font-semibold disabled:opacity-50 shadow-sm h-[50px]"
-                disabled={isLoading || !input.trim() || !activeCaseId}
-              >
-                Send
-              </button>
-            </div>
-            <p className="text-xs text-gray-400 text-center mt-2">{mode === 'quick' ? 'Quick rights skim + 1 step (low tokens).' : 'Full cited roadmap + templates/links (smart chains).'}</p>
-          </form>
+          </div>
+
         </div>
 
-        {/* Right Sidebar */}
         {mode === 'deep' && (
-           <div className={`w-72 bg-white shadow-lg flex flex-col flex-shrink-0 transition-all duration-300 ease-in-out z-10 ${isReferencesOpen ? 'mr-0' : '-mr-72'}`}>
-              <div className="p-4 border-b flex justify-between items-center"><h3 className="text-lg font-semibold text-gray-800">References & Citations</h3><button onClick={toggleReferences} className="text-gray-500 hover:text-gray-800 p-1 rounded-full hover:bg-gray-100"><X size={20}/></button></div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                 {activeReferences.length === 0 ? <p className="text-sm text-gray-500 italic">Citations appear here.</p> : (
+           <div className={`
+                fixed inset-y-0 right-0 z-30 bg-white shadow-2xl border-l border-slate-200 transition-all duration-300 ease-in-out overflow-hidden
+                ${isReferencesOpen ? 'w-80 translate-x-0' : 'w-0 translate-x-full opacity-0'}
+                lg:relative lg:shadow-none
+                ${!isReferencesOpen && 'lg:w-0 lg:border-none'}
+           `}>
+              <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 min-w-[320px]">
+                 <h3 className="font-bold text-slate-700 flex items-center gap-2"><LinkIcon size={16}/> Citations</h3>
+                 <button onClick={() => setIsReferencesOpen(false)} className="text-slate-400 hover:text-red-500"><X size={20}/></button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 min-w-[320px]">
+                 {activeReferences.length === 0 ? (
+                    <div className="text-center text-slate-400 py-10 text-sm italic">
+                        Citations and relevant acts will appear here when you use <strong>Deep Mode</strong>.
+                    </div>
+                 ) : (
                    <ul className="space-y-3">
                      {activeReferences.map((ref, i) => (
-                        <li key={i} className="flex items-start gap-3">
-                           <div>
-                             {ref.type === 'link' ? <span className="flex items-center justify-center w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex-shrink-0"><Link size={14} /></span> : <span className="flex items-center justify-center w-6 h-6 bg-purple-100 text-purple-600 rounded-full flex-shrink-0"><BookCopy size={14} /></span>}
-                           </div>
-                           <div className="flex-1 min-w-0">
-                             {ref.href ? <a href={ref.href} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline break-words">{ref.title}</a> : <span className="text-sm font-medium text-gray-700 break-words">{ref.title}</span>}
-                           </div>
+                        <li key={i} className="p-3 bg-slate-50 rounded-lg border border-slate-100 text-sm hover:border-blue-200 transition-colors">
+                           <a href={ref.href || '#'} target="_blank" rel="noopener noreferrer" className="flex items-start gap-3 group">
+                               <span className="mt-0.5 text-blue-500"><BookCopy size={14}/></span>
+                               <span className="text-slate-700 font-medium group-hover:text-blue-600 underline decoration-slate-300 group-hover:decoration-blue-400 underline-offset-2 break-words">
+                                 {ref.title}
+                               </span>
+                           </a>
                         </li>
                      ))}
                    </ul>
@@ -523,31 +579,6 @@ export default function GeneralQueries() {
            </div>
         )}
 
-        {/* Context Menu */}
-        {contextMenu.visible && (
-           <div ref={contextMenuRef} style={{ top: contextMenu.y, left: contextMenu.x }} className="absolute z-50 w-36 bg-white rounded-md shadow-lg border border-gray-200 py-1">
-              <button onClick={handleStartRename} className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"><Pencil size={14} className="mr-1"/> Rename</button>
-              <button onClick={handlePinCase} className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"><Pin size={14} className="mr-1"/> Pin</button>
-              <button onClick={handleShowDeleteModal} className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50"><Trash2 size={14} className="mr-1"/> Delete</button>
-           </div>
-        )}
-        
-        {/* Delete Modal */}
-        {showDeleteModal && (
-           <div className="absolute inset-0 z-40 flex items-center justify-center bg-black bg-opacity-50">
-              <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm">
-                 <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-medium text-gray-900">Delete Case?</h3>
-                    <button onClick={handleHideDeleteModal} className="text-gray-400 hover:text-gray-600"><X size={20}/></button>
-                 </div>
-                 <p className="text-sm text-gray-600 mb-6">Are you sure you want to delete "<span className="font-medium">{caseFiles[showDeleteModal]?.title}</span>"?</p>
-                 <div className="flex justify-end gap-3">
-                    <button onClick={handleHideDeleteModal} className="px-4 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200">Cancel</button>
-                    <button onClick={handleConfirmDelete} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">Delete</button>
-                 </div>
-              </div>
-           </div>
-        )}
       </div>
     </>
   );
