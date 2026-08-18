@@ -412,7 +412,7 @@ export default function GeneralQueries() {
                             <Sparkles size={14} className="text-[#FF5B33]"/> How Credits Work
                         </h4>
                         <p className="text-slate-600 text-[11px] leading-relaxed mb-3">
-                            We calculate "Effort Saved" based on the complexity of your query.
+                            We calculate &quot;Effort Saved&quot; based on the complexity of your query.
                         </p>
                         <ul className="space-y-2 text-[11px]">
                             <li className="flex items-start gap-2">

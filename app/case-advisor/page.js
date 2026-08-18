@@ -561,7 +561,7 @@ export default function CaseAdvisor() {
                                         <h4 className="text-sm font-bold text-yellow-500 mb-1">Electronic Evidence (Sec 65B)</h4>
                                         <p className="text-xs text-gray-400 leading-relaxed">
                                             Mandatory for admissibility of WhatsApp, Emails, CCTV, etc. <br/>
-                                            <span className="text-yellow-600/80 italic">Note: There is no central "Code" for this. It is a signed affidavit.</span>
+                                            <span className="text-yellow-600/80 italic">Note: There is no central &quot;Code&quot; for this. It is a signed affidavit.</span>
                                         </p>
                                     </div>
                                 </div>

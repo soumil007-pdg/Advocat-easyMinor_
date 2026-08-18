@@ -65,7 +65,7 @@ export default function Auth() {
         {/* Quote Only - No Logo, No Social Proof */}
         <div className="relative z-10 max-w-md">
           <blockquote className="text-2xl font-medium leading-relaxed mb-6 border-l-4 border-[#FF5B33] pl-6">
-            "The law should not be a mystery. We empower you to understand your rights before you even step into a lawyer's office."
+            &ldquo;The law should not be a mystery. We empower you to understand your rights before you even step into a lawyer&apos;s office.&rdquo;
           </blockquote>
         </div>
       </div>

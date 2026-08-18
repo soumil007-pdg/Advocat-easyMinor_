@@ -62,7 +62,7 @@ export default function Dashboard() {
                 Quick Rights Chat
               </h2>
               <p className="text-orange-50 text-base leading-relaxed flex-grow mb-8 font-medium opacity-90">
-                Ask everyday questions like "Can my landlord keep my deposit?" and get instant, cited answers based on the Constitution.
+                Ask everyday questions like &quot;Can my landlord keep my deposit?&quot; and get instant, cited answers based on the Constitution.
               </p>
               
               {/* CTA */}

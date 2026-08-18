@@ -141,7 +141,7 @@ export default function Home() {
                   Case Advisor
                 </h3>
                 <p className="text-slate-600 leading-relaxed">
-                  Share your situation for precise, step-by-step legal advice. We'll build a strategy, evidence checklist, and timeline for you.
+                  Share your situation for precise, step-by-step legal advice. We&apos;ll build a strategy, evidence checklist, and timeline for you.
                 </p>
               </div>
             </Link>
@@ -202,9 +202,9 @@ export default function Home() {
             <div className="space-y-8">
                 <h3 className="text-2xl font-bold text-white border-b border-gray-700 pb-4 mb-2">Frequently Asked Questions</h3>
                 <div>
-                    <h4 className="font-bold text-white text-lg mb-1">What are 'Credits Saved'?</h4>
+                    <h4 className="font-bold text-white text-lg mb-1">What are &apos;Credits Saved&apos;?</h4>
                     <p className="text-sm text-gray-400 leading-relaxed">
-                        Think of AI tokens as "word-coins". A typical chat burns thousands. We do the heavy lifting upfront, optimizing your prompt to get a complete strategy in one go. "Credits Saved" tracks that efficiency.
+                        Think of AI tokens as &quot;word-coins&quot;. A typical chat burns thousands. We do the heavy lifting upfront, optimizing your prompt to get a complete strategy in one go. &quot;Credits Saved&quot; tracks that efficiency.
                     </p>
                 </div>
                 <div>
@@ -222,7 +222,7 @@ export default function Home() {
                 <div>
                     <h4 className="font-bold text-white text-lg mb-1">Quick Chat vs. Case Advisor?</h4>
                     <p className="text-sm text-gray-400 leading-relaxed">
-                        Use <strong>Quick Chat</strong> for everyday doubts (e.g., "Is this rent clause legal?"). Use <strong>Case Advisor</strong> when you have a specific dispute and need a structured roadmap and evidence checklist.
+                        Use <strong>Quick Chat</strong> for everyday doubts (e.g., &quot;Is this rent clause legal?&quot;). Use <strong>Case Advisor</strong> when you have a specific dispute and need a structured roadmap and evidence checklist.
                     </p>
                 </div>
             </div>
