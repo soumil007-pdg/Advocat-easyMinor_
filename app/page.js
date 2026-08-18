@@ -54,7 +54,6 @@ export default function Home() {
       {/* --- Section 1: Hero (LOWERED BOTTOM EDGE) --- */}
       {/* Changed pb-24/32 to pb-32/48 to extend orange area */}
       <section className="bg-[#FF5B33] pt-24 pb-32 md:pt-32 md:pb-48 text-white relative overflow-hidden">
-        <div className="absolute inset-0 opacity-5 bg-[url('/noise.png')]"></div>
         <div className="container mx-auto px-4 max-w-4xl text-center relative z-10">
             <h1 className="text-5xl md:text-7xl font-extrabold leading-tight mb-6 tracking-tight">
               Understand your <br />

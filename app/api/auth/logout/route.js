@@ -1,7 +1,5 @@
-import { MongoClient } from 'mongodb';
+import clientPromise from '@/lib/db';
 
-const uri = 'mongodb://localhost:27017';
-const client = new MongoClient(uri);
 const dbName = 'auth_db';
 const sessionCollection = 'sessions';
 
@@ -9,7 +7,7 @@ export async function POST(req) {
   const { token } = await req.json();
 
   try {
-    await client.connect();
+    const client = await clientPromise;
     const db = client.db(dbName);
     const sessions = db.collection(sessionCollection);
 
@@ -21,7 +19,5 @@ export async function POST(req) {
     return new Response(JSON.stringify({ message: 'Logout successful' }), { status: 200 });
   } catch (err) {
     return new Response(JSON.stringify({ message: 'Server error' }), { status: 500 });
-  } finally {
-    await client.close();
   }
 }
